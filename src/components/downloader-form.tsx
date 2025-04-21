@@ -199,11 +199,12 @@ export default function DownloaderForm() {
 											<div className='p-3 bg-yellow-50 border border-yellow-200 rounded-md text-sm text-yellow-800'>
 												<p>
 													<strong>Note:</strong> For
-													YouTube videos, we'll open
-													the video in a new tab. You
-													can use browser extensions
-													or online services to
-													download the video.
+													YouTube videos, we&apos;ll
+													open the video in a new tab.
+													You can use browser
+													extensions or online
+													services to download the
+													video.
 												</p>
 											</div>
 										)}

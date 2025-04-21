@@ -28,5 +28,40 @@ export default function RootLayout({
 }
 
 export const metadata = {
-	generator: "v0.dev",
+	title: {
+		template: '%s | Video Downloader Pro',
+		default: 'Video Downloader Pro - Download Videos from Multiple Platforms'
+	},
+	description: 'Free online video downloader supporting multiple platforms. Download videos from YouTube, Facebook, Instagram, and more in high quality.',
+	generator: 'Next.js',
+	applicationName: 'Video Downloader Pro',
+	keywords: ['video downloader', 'youtube downloader', 'online video download', 'free video downloader', 'social media video download'],
+	authors: [{ name: 'Video Downloader Pro Team' }],
+	canonical: 'https://your-domain.com',
+	robotsContent: 'index, follow',
+	openGraph: {
+		type: 'website',
+		locale: 'en_US',
+		url: 'https://your-domain.com',
+		site_name: 'Video Downloader Pro',
+		title: 'Video Downloader Pro - Download Videos from Multiple Platforms',
+		description: 'Free online video downloader supporting multiple platforms. Download videos from YouTube, Facebook, Instagram, and more in high quality.',
+		images: [{
+			url: '/og-image.jpg',
+			width: 1200,
+			height: 630,
+			alt: 'Video Downloader Pro'
+		}]
+	},
+	twitter: {
+		card: 'summary_large_image',
+		title: 'Video Downloader Pro - Download Videos from Multiple Platforms',
+		description: 'Free online video downloader supporting multiple platforms. Download videos from YouTube, Facebook, Instagram, and more in high quality.',
+		images: ['/og-image.jpg'],
+		creator: '@videodownloaderpro'
+	},
+	verification: {
+		google: 'your-google-verification-code',
+		yandex: 'your-yandex-verification-code'
+	}
 };
