@@ -2,9 +2,8 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
-import { existsSync } from "fs";
+import { existsSync, createWriteStream, statSync } from "fs";
 import ytdl from "ytdl-core";
-import instagramGetUrl from "instagram-url-direct";
 
 // Helper function to create a hash of the URL for file naming
 function createUrlHash(url: string): string {
@@ -80,127 +79,11 @@ async function extractInstagramMediaUrl(
 				}
 			}
 		}
-
-		// Alternative method for newer Instagram structure
-		const dataRegex2 =
-			/<script type="application\/ld\+json">(.+?)<\/script>/;
-		const match2 = html.match(dataRegex2);
-
-		if (match2 && match2[1]) {
-			try {
-				const jsonData = JSON.parse(match2[1]);
-
-				if (jsonData.video) {
-					return jsonData.video.contentUrl;
-				} else if (jsonData.image) {
-					return Array.isArray(jsonData.image)
-						? jsonData.image[0].url
-						: jsonData.image.url;
-				}
-			} catch (e) {
-				console.error("Error parsing JSON-LD data:", e);
-			}
-		}
-
 		return null;
 	} catch (error) {
 		console.error("Error extracting Instagram media URL:", error);
 		return null;
 	}
-}
-
-// Helper function to extract Facebook video URL
-async function extractFacebookVideoUrl(url: string): Promise<string | null> {
-	try {
-		const response = await fetch(url, {
-			headers: {
-				"User-Agent":
-					"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-			},
-		});
-
-		if (!response.ok) {
-			throw new Error(
-				`Failed to fetch Facebook page: ${response.statusText}`
-			);
-		}
-
-		const html = await response.text();
-
-		// Look for HD video URL in the page
-		const hdSrcRegex = /hd_src:"([^"]+)"/;
-		const hdMatch = html.match(hdSrcRegex);
-
-		if (hdMatch && hdMatch[1]) {
-			return hdMatch[1];
-		}
-
-		// Look for SD video URL as fallback
-		const sdSrcRegex = /sd_src:"([^"]+)"/;
-		const sdMatch = html.match(sdSrcRegex);
-
-		if (sdMatch && sdMatch[1]) {
-			return sdMatch[1];
-		}
-
-		return null;
-	} catch (error) {
-		console.error("Error extracting Facebook video URL:", error);
-		return null;
-	}
-}
-
-// Helper function to extract YouTube video info
-async function extractYouTubeInfo(
-	url: string
-): Promise<{
-	videoUrl: string | null;
-	title: string | null;
-	thumbnail: string | null;
-}> {
-	try {
-		// Use a different approach to get YouTube video info without ytdl-core
-		const videoId = extractYouTubeVideoId(url);
-
-		if (!videoId) {
-			return { videoUrl: null, title: null, thumbnail: null };
-		}
-
-		// Get video info from YouTube oEmbed API
-		const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
-		const oembedResponse = await fetch(oembedUrl);
-
-		if (!oembedResponse.ok) {
-			throw new Error(
-				`Failed to fetch YouTube oEmbed data: ${oembedResponse.statusText}`
-			);
-		}
-
-		const oembedData = await oembedResponse.json();
-		const title = oembedData.title || null;
-		const thumbnail = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
-
-		// For the actual video URL, we'll use a YouTube download service
-		// Note: In a production app, you might want to use a more reliable method
-		const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-
-		return {
-			videoUrl,
-			title,
-			thumbnail,
-		};
-	} catch (error) {
-		console.error("Error extracting YouTube info:", error);
-		return { videoUrl: null, title: null, thumbnail: null };
-	}
-}
-
-// Helper function to extract YouTube video ID from URL
-function extractYouTubeVideoId(url: string): string | null {
-	const regExp =
-		/^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
-	const match = url.match(regExp);
-	return match && match[7].length === 11 ? match[7] : null;
 }
 
 // Helper function to download file from URL
@@ -253,146 +136,145 @@ export async function GET(request: NextRequest) {
 		switch (type) {
 			case "youtube": {
 				try {
-					console.log('Processing YouTube URL:', url);
-					
+					console.log("Processing YouTube URL:", url);
+
 					// Validate YouTube URL
 					if (!ytdl.validateURL(url)) {
-						throw new Error('Invalid YouTube URL');
+						throw new Error("Invalid YouTube URL");
 					}
 
-					// Get basic video info first
-					console.log('Getting video info...');
-					const info = await ytdl.getBasicInfo(url);
-					console.log('Video info retrieved successfully');
-
-					title = info.videoDetails.title;
-					thumbnail = info.videoDetails.thumbnails[0].url;
-
-					// Get all available formats
-					console.log('Getting available formats...');
-					let formats = info.formats.filter(format => {
-						// Check for video formats using multiple indicators
-						return format.hasVideo || 
-							format.qualityLabel || 
-							format.quality?.includes('p') || 
-							format.height || 
-							format.width || 
-							format.fps;
-					});
-					console.log(`Found ${formats.length} formats with video`);
-
-					// Get the requested format or best available
-					let format;
-					if (quality) {
-						format = formats.find(f => f.itag === parseInt(quality));
-						console.log(`Requested quality ${quality}, format found:`, format ? 'yes' : 'no');
-					}
-
-					if (!format) {
-						// Sort formats by quality
-						const getQualityNumber = (format: any) => {
-							// Try height first
-							if (format.height) return format.height;
-
-							// Try quality label
-							if (format.qualityLabel) {
-								const match = format.qualityLabel.match(/\d+/);
-								if (match) return parseInt(match[0]);
-							}
-
-							// Try quality string
-							if (format.quality) {
-								const match = format.quality.match(/\d+/);
-								if (match) return parseInt(match[0]);
-							}
-
-							return 0;
-						};
-
-						formats = formats.sort((a, b) => {
-							// Get quality numbers
-							const qualityA = getQualityNumber(a);
-							const qualityB = getQualityNumber(b);
-
-							// Compare qualities
-							if (qualityA !== qualityB) {
-								return qualityB - qualityA;
-							}
-
-							// If qualities are equal, prefer formats with both audio and video
-							const aHasAudio = a.hasAudio || a.audioQuality || a.audioBitrate;
-							const bHasAudio = b.hasAudio || b.audioQuality || b.audioBitrate;
-							
-							if (aHasAudio !== bHasAudio) {
-								return aHasAudio ? -1 : 1;
-							}
-
-							// If still equal, prefer formats with container info
-							if (a.container && !b.container) return -1;
-							if (!a.container && b.container) return 1;
-
-							return 0;
-						});
-
-						// Get the best format
-						format = formats[0];
-						console.log('Selected format:', {
-							itag: format.itag,
-							quality: format.qualityLabel,
-							container: format.container,
-							hasAudio: format.hasAudio
-						});
-					}
-
-					if (!format) {
-						throw new Error('No suitable format found');
-					}
-
-					fileName = `youtube-${urlHash}.${format.container || 'mp4'}`;
-					contentType = format.mimeType || 'video/mp4';
+					// Set up file path first
+					fileName = `youtube-${urlHash}.mp4`;
+					contentType = "video/mp4";
 					const filePath = join(downloadsDir, fileName);
-					console.log('Saving to:', filePath);
 
-					// Download using ytdl with specific format
-					const stream = ytdl(url, {
-						format,
-						quality: format.itag,
-						dlChunkSize: 0, // Set to 0 for better stability
-					});
+					// Check if file already exists
+					if (!existsSync(filePath)) {
+						// Get video info with retries
+						console.log("Getting video info...");
+						let info;
+						try {
+							info = await ytdl.getInfo(url);
+						} catch (error) {
+							console.error("Error getting video info:", error);
+							throw new Error("Could not get video information");
+						}
 
-					// Save to file
-					await new Promise((resolve, reject) => {
-						const writeStream = require('fs').createWriteStream(filePath);
-						stream.pipe(writeStream);
+						console.log("Video info retrieved successfully");
+						title = info.videoDetails.title;
+						thumbnail = info.videoDetails.thumbnails[0].url;
 
-						let downloaded = 0;
-						stream.on('data', (chunk) => {
-							downloaded += chunk.length;
-							console.log(`Downloaded: ${(downloaded / 1024 / 1024).toFixed(2)}MB`);
+						// Get available formats and select the appropriate one
+						console.log("Getting available formats...");
+						const formats = ytdl.filterFormats(
+							info.formats,
+							"videoandaudio"
+						);
+						let selectedFormat = formats.find(
+							(f) => f.itag === parseInt(quality || "18")
+						);
+
+						if (!selectedFormat) {
+							// Fallback to best available format
+							formats.sort(
+								(a, b) => (b.height || 0) - (a.height || 0)
+							);
+							selectedFormat = formats[0];
+						}
+
+						if (!selectedFormat) {
+							throw new Error("No suitable format found");
+						}
+
+						console.log(
+							"Starting download with format:",
+							selectedFormat.qualityLabel
+						);
+
+						// Download using the selected format
+						const stream = ytdl.downloadFromInfo(info, {
+							format: selectedFormat,
 						});
 
-						stream.on('error', (error: Error) => {
-							console.error('Stream error:', error.message);
-							reject(error);
+						// Set up write stream
+						const writeStream = createWriteStream(filePath);
+						let downloadError: Error | null = null;
+
+						// Wait for download to complete
+						await new Promise((resolve, reject) => {
+							// Set up data event to track progress
+							let downloaded = 0;
+							stream.on("data", (chunk) => {
+								downloaded += chunk.length;
+								console.log(
+									`Downloaded: ${(
+										downloaded /
+										1024 /
+										1024
+									).toFixed(2)} MB`
+								);
+							});
+
+							// Handle stream errors
+							stream.on("error", (err: Error) => {
+								console.error("Stream error:", err);
+								downloadError = err;
+								writeStream.destroy(err);
+								reject(err);
+							});
+
+							// Handle write errors
+							writeStream.on("error", (err: Error) => {
+								console.error("Write error:", err);
+								downloadError = err;
+								stream.destroy(err);
+								reject(err);
+							});
+
+							// Handle completion
+							writeStream.on("finish", () => {
+								if (downloadError) {
+									console.error(
+										"Download failed:",
+										downloadError
+									);
+									reject(downloadError);
+								} else {
+									console.log(
+										"Download completed successfully"
+									);
+									resolve(true);
+								}
+							});
+
+							// Start the download
+							stream.pipe(writeStream);
 						});
 
-						writeStream.on('finish', () => {
-							console.log('Download completed successfully');
-							resolve(true);
-						});
-
-						writeStream.on('error', (error: Error) => {
-							console.error('Write error:', error.message);
-							reject(error);
-						});
-					});
+						// Verify the download
+						const stats = statSync(filePath);
+						if (stats.size === 0) {
+							throw new Error("Download failed - file is empty");
+						}
+						console.log(
+							`Download completed. File size: ${(
+								stats.size /
+								1024 /
+								1024
+							).toFixed(2)} MB`
+						);
+					}
 
 					downloadPath = `/downloads/${fileName}`;
-					console.log('Download path set:', downloadPath);
 				} catch (error) {
-					console.error('YouTube download error:', error instanceof Error ? error.message : error);
+					const err = error as Error;
+					console.error("YouTube download error:", err);
 					return NextResponse.json(
-						{ error: `Failed to process YouTube video: ${error instanceof Error ? error.message : 'Unknown error'}` },
+						{
+							error:
+								err.message ||
+								"Failed to download YouTube video",
+						},
 						{ status: 500 }
 					);
 				}
@@ -527,12 +409,15 @@ export async function GET(request: NextRequest) {
 					// For Facebook, we'll try to get the video URL first
 					const response = await fetch(url, {
 						headers: {
-							'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-						}
+							"User-Agent":
+								"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+						},
 					});
 
 					if (!response.ok) {
-						throw new Error(`Failed to fetch Facebook page: ${response.statusText}`);
+						throw new Error(
+							`Failed to fetch Facebook page: ${response.statusText}`
+						);
 					}
 
 					const html = await response.text();
@@ -552,14 +437,14 @@ export async function GET(request: NextRequest) {
 					// If no direct video URL found, try to find the video player URL
 					const playerMatch = html.match(/"playable_url":"([^"]+)"/i);
 					if (playerMatch && playerMatch[1]) {
-						const playerUrl = playerMatch[1].replace(/\\/g, '');
+						const playerUrl = playerMatch[1].replace(/\\/g, "");
 						return NextResponse.redirect(playerUrl);
 					}
 
 					// If all else fails, redirect to original URL
 					return NextResponse.redirect(url);
 				} catch (error) {
-					console.error('Facebook video error:', error);
+					console.error("Facebook video error:", error);
 					// If anything fails, redirect to original URL
 					return NextResponse.redirect(url);
 				}

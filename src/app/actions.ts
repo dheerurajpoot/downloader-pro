@@ -11,11 +11,6 @@ function extractYouTubeVideoId(url: string): string | null {
 	return match && match[7].length === 11 ? match[7] : null;
 }
 
-// Helper function to validate YouTube URL
-function validateYouTubeUrl(url: string): boolean {
-	const videoId = extractYouTubeVideoId(url);
-	return videoId !== null;
-}
 
 export async function downloadContent(url: string) {
 	try {
@@ -60,7 +55,7 @@ async function handleYouTube(url: string, quality?: string) {
 		const thumbnail = info.videoDetails.thumbnails[0].url;
 
 		// Get all formats
-		let formats = info.formats;
+		const formats = info.formats;
 		console.log('Total formats:', formats.length);
 
 		// First try to get formats with both video and audio
@@ -117,7 +112,7 @@ async function handleYouTube(url: string, quality?: string) {
 		// Sort formats by quality
 		const sortedFormats = bestFormats.sort((a, b) => {
 			// Helper function to get numeric quality
-			const getQualityNumber = (format: any) => {
+			const getQualityNumber = (format: ytdl.videoFormat) => {
 				// Try height first
 				if (format.height) return format.height;
 
