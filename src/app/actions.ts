@@ -1,5 +1,8 @@
 "use server";
 
+import ytdl from 'ytdl-core';
+import { instagramGetUrl } from 'instagram-url-direct';
+
 // Helper function to extract YouTube video ID from URL
 function extractYouTubeVideoId(url: string): string | null {
 	const regExp =
@@ -44,110 +47,255 @@ export async function downloadContent(url: string) {
 	}
 }
 
-async function handleYouTube(url: string) {
+async function handleYouTube(url: string, quality?: string) {
 	try {
 		// Validate YouTube URL
-		if (!validateYouTubeUrl(url)) {
+		if (!ytdl.validateURL(url)) {
 			return { success: false, message: "Invalid YouTube URL" };
 		}
 
-		const videoId = extractYouTubeVideoId(url);
+		// Get basic video info first
+		const info = await ytdl.getBasicInfo(url);
+		const title = info.videoDetails.title;
+		const thumbnail = info.videoDetails.thumbnails[0].url;
 
-		// Get basic video info without using ytdl-core
-		const title = `YouTube Video (ID: ${videoId})`;
-		const thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+		// Get all formats
+		let formats = info.formats;
+		console.log('Total formats:', formats.length);
+
+		// First try to get formats with both video and audio
+		let bestFormats = formats.filter(format => {
+			// Check for video formats using multiple indicators
+			const hasVideo = format.hasVideo || 
+				format.qualityLabel || 
+				format.quality?.includes('p') || 
+				format.height || 
+				format.width || 
+				format.fps;
+
+			// Check for audio
+			const hasAudio = format.hasAudio || 
+				format.audioQuality || 
+				format.audioBitrate;
+
+			return hasVideo && hasAudio;
+		});
+		console.log('Formats with video and audio:', bestFormats.length);
+
+		// If no combined formats, try video-only formats
+		if (bestFormats.length === 0) {
+			bestFormats = formats.filter(format => {
+				return format.hasVideo || 
+					format.qualityLabel || 
+					format.quality?.includes('p') || 
+					format.height || 
+					format.width || 
+					format.fps;
+			});
+			console.log('Video-only formats:', bestFormats.length);
+		}
+
+		// If still no formats, try any format with quality indicators
+		if (bestFormats.length === 0) {
+			bestFormats = formats.filter(format => 
+				format.quality || 
+				format.qualityLabel || 
+				format.height || 
+				format.width
+			);
+			console.log('Formats with quality:', bestFormats.length);
+		}
+
+		// If still nothing, use all formats except audio-only
+		if (bestFormats.length === 0) {
+			bestFormats = formats.filter(format => 
+				!format.audioQuality || format.height || format.width
+			);
+			console.log('Remaining formats:', bestFormats.length);
+		}
+
+		// Sort formats by quality
+		const sortedFormats = bestFormats.sort((a, b) => {
+			// Helper function to get numeric quality
+			const getQualityNumber = (format: any) => {
+				// Try height first
+				if (format.height) return format.height;
+
+				// Try quality label
+				if (format.qualityLabel) {
+					const match = format.qualityLabel.match(/\d+/);
+					if (match) return parseInt(match[0]);
+				}
+
+				// Try quality string
+				if (format.quality) {
+					const match = format.quality.match(/\d+/);
+					if (match) return parseInt(match[0]);
+				}
+
+				return 0;
+			};
+
+			// Get quality numbers
+			const qualityA = getQualityNumber(a);
+			const qualityB = getQualityNumber(b);
+
+			// Compare qualities
+			if (qualityA !== qualityB) {
+				return qualityB - qualityA;
+			}
+
+			// If qualities are equal, prefer formats with both audio and video
+			const aHasAudio = a.hasAudio || a.audioQuality || a.audioBitrate;
+			const bHasAudio = b.hasAudio || b.audioQuality || b.audioBitrate;
+			
+			if (aHasAudio !== bHasAudio) {
+				return aHasAudio ? -1 : 1;
+			}
+
+			// If still equal, prefer formats with container info
+			if (a.container && !b.container) return -1;
+			if (!a.container && b.container) return 1;
+
+			return 0;
+		});
+
+		if (sortedFormats.length === 0) {
+			throw new Error('No formats found. Please try a different video.');
+		}
+
+		// Get the requested format or best available
+		let format = quality 
+			? sortedFormats.find(f => f.itag === parseInt(quality))
+			: sortedFormats[0];
+
+		// If requested quality not found, use best available
+		if (!format) {
+			format = sortedFormats[0];
+		}
+
+		console.log('Selected format:', {
+			itag: format.itag,
+			quality: format.qualityLabel || format.quality,
+			container: format.container,
+			hasAudio: format.hasAudio,
+			hasVideo: format.hasVideo
+		});
 
 		return {
 			success: true,
 			message: "YouTube video processed successfully",
-			downloadUrl: `/api/proxy?url=${encodeURIComponent(
-				url
-			)}&type=youtube`,
+			downloadUrl: `/api/proxy?url=${encodeURIComponent(url)}&type=youtube&quality=${format.itag}`,
 			type: "Video",
 			title,
 			thumbnail,
+			formats: sortedFormats.map(f => ({
+				itag: f.itag,
+				quality: f.qualityLabel || f.quality || `${f.height}p` || 'Unknown',
+				container: f.container || 'mp4',
+				hasAudio: f.hasAudio
+			}))
 		};
 	} catch (error) {
 		console.error("Error handling YouTube:", error);
 		return {
 			success: false,
-			message: "Failed to process YouTube video. Please try again.",
+			message: error instanceof Error ? error.message : "Failed to process YouTube video. Please try again.",
 		};
 	}
 }
 
 async function handleInstagram(url: string) {
 	try {
-		// Check if it's a reel, post, or profile
-		if (url.includes("/reel/")) {
-			// Handle Instagram reel
-			return {
-				success: true,
-				message: "Instagram reel processed successfully",
-				downloadUrl: `/api/proxy?url=${encodeURIComponent(
-					url
-				)}&type=reel`,
-				type: "Reel",
-				title: "Instagram Reel",
-				// We can't easily get the thumbnail without processing the page
-				thumbnail: "/placeholder.svg?height=300&width=500",
-			};
-		} else if (url.includes("/p/")) {
-			// Handle Instagram post (photo/video)
-			return {
-				success: true,
-				message: "Instagram post processed successfully",
-				downloadUrl: `/api/proxy?url=${encodeURIComponent(
-					url
-				)}&type=post`,
-				type: "Post",
-				title: "Instagram Post",
-				// We can't easily get the thumbnail without processing the page
-				thumbnail: "/placeholder.svg?height=300&width=500",
-			};
-		} else {
-			// Assume it's a profile
-			const username =
-				url.split("instagram.com/")[1]?.split("/")[0] || "user";
-			return {
-				success: true,
-				message: "Instagram profile photo processed successfully",
-				downloadUrl: `/api/proxy?url=${encodeURIComponent(
-					url
-				)}&type=profile`,
-				type: "Profile Photo",
-				title: `Profile Photo: @${username}`,
-				// We can't easily get the thumbnail without processing the page
-				thumbnail: "/placeholder.svg?height=300&width=500",
-			};
+		// Basic URL validation
+		if (!url.includes('instagram.com')) {
+			return { success: false, message: "Invalid Instagram URL" };
 		}
+
+		// Use instagram-url-direct to get media info
+		const response = await instagramGetUrl(url);
+		if (!response.url_list || response.url_list.length === 0) {
+			throw new Error('No media URLs found');
+		}
+
+		// Get media type and info
+		const mediaUrl = response.url_list[0];
+		const isVideo = mediaUrl.includes('.mp4');
+		const type = isVideo ? 'video' : 'image';
+
+		// Get media info based on URL type
+		let title = 'Instagram Content';
+		let mediaType = 'post'; // Default to post
+
+		if (url.includes('/reel/')) {
+			title = 'Instagram Reel';
+			mediaType = 'reel';
+		} else if (url.includes('/p/')) {
+			title = 'Instagram Post';
+			mediaType = 'post';
+		} else if (!url.includes('/p/') && !url.includes('/reel/')) {
+			const username = url.split('instagram.com/')[1]?.split('/')[0] || 'user';
+			title = `Profile Photo: @${username}`;
+			mediaType = 'profile';
+		}
+
+		// Get all available media URLs
+		const mediaUrls = response.url_list.map(url => ({
+			url,
+			type: url.includes('.mp4') ? 'video' : 'image',
+			quality: url.includes('750x750') ? 'high' : 'standard'
+		}));
+
+		return {
+			success: true,
+			message: `Instagram ${mediaType} processed successfully`,
+			downloadUrl: `/api/proxy?url=${encodeURIComponent(url)}&type=${mediaType}&media_url=${encodeURIComponent(mediaUrl)}`,
+			type: mediaType,
+			title,
+			thumbnail: type === 'video' ? mediaUrls.find(m => m.type === 'image')?.url || '/placeholder.svg?height=300&width=500' : mediaUrl,
+			mediaType: type,
+			mediaUrls
+		};
 	} catch (error) {
-		console.error("Error handling Instagram:", error);
+		console.error('Error handling Instagram:', error);
 		return {
 			success: false,
-			message: "Failed to process Instagram content. Please try again.",
+			message: error instanceof Error ? error.message : 'Failed to process Instagram content. Please try again.',
 		};
 	}
 }
 
 async function handleFacebook(url: string) {
 	try {
+		// Basic URL validation
+		if (!url.includes('facebook.com') && !url.includes('fb.com')) {
+			return { success: false, message: "Invalid Facebook URL" };
+		}
+
+		// Extract video ID if possible
+		let videoId = '';
+		if (url.includes('videos/')) {
+			videoId = url.split('videos/')[1]?.split('/')[0] || '';
+		} else if (url.includes('watch?v=')) {
+			videoId = url.split('watch?v=')[1]?.split('&')[0] || '';
+		}
+
+		// For Facebook, we'll use a direct proxy approach
 		return {
 			success: true,
 			message: "Facebook video processed successfully",
-			downloadUrl: `/api/proxy?url=${encodeURIComponent(
-				url
-			)}&type=facebook`,
+			downloadUrl: `/api/proxy?url=${encodeURIComponent(url)}&type=facebook${videoId ? `&video_id=${videoId}` : ''}`,
 			type: "Video",
-			title: "Facebook Video",
-			// We can't easily get the thumbnail without processing the page
+			title: videoId ? `Facebook Video (ID: ${videoId})` : "Facebook Video",
 			thumbnail: "/placeholder.svg?height=300&width=500",
+			isExternal: true, // This will open in a new tab
+			videoId
 		};
 	} catch (error) {
 		console.error("Error handling Facebook:", error);
 		return {
 			success: false,
-			message: "Failed to process Facebook content. Please try again.",
+			message: error instanceof Error ? error.message : "Failed to process Facebook content. Please try again.",
 		};
 	}
 }

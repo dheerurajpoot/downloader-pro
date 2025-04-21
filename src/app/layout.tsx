@@ -28,6 +28,7 @@ export default function RootLayout({
 }
 
 export const metadata = {
+	metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
 	title: {
 		template: '%s | Video Downloader Pro',
 		default: 'Video Downloader Pro - Download Videos from Multiple Platforms'
