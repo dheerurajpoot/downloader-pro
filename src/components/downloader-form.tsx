@@ -44,7 +44,6 @@ export default function DownloaderForm() {
 
 		try {
 			const response = await downloadContent(url);
-			console.log(response);
 			setResult(response);
 
 			if (response.success) {
@@ -157,7 +156,7 @@ export default function DownloaderForm() {
 														result.title ||
 														"Thumbnail"
 													}
-													className='object-cover w-full max-w-md rounded-lg h-52 border border-green-100'
+													className='object-cover rounded-lg max-h-[600px] border border-green-100'
 												/>
 											</div>
 										)}

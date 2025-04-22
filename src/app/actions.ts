@@ -43,7 +43,7 @@ async function handleYouTube(url: string, quality?: string) {
 		// Get basic video info first
 		const info = await ytdl.getBasicInfo(url);
 		const title = info.videoDetails.title;
-		const thumbnail = info.videoDetails.thumbnails[0].url;
+		const thumbnail = info.videoDetails.thumbnails.at(-1)?.url;
 
 		// Get all formats
 		const formats = info.formats;
@@ -213,7 +213,6 @@ async function handleInstagram(url: string) {
 		if (!response.url_list || response.url_list.length === 0) {
 			throw new Error("No media URLs found");
 		}
-
 		// Get media type and info
 		const mediaUrl = response.url_list[0];
 		const isVideo = mediaUrl.includes(".mp4");
@@ -222,17 +221,28 @@ async function handleInstagram(url: string) {
 		// Get media info based on URL type
 		let title = "Instagram Content";
 		let mediaType = "post"; // Default to post
-
+		let thumbnail = "/placeholder.svg?height=300&width=500";
 		if (url.includes("/reel/")) {
-			title = "Instagram Reel";
+			title = response.post_info.caption || "Instagram Reel";
+			const rawThumbnail = response.media_details[0].thumbnail;
+			thumbnail = rawThumbnail
+				? `/api/image-proxy?url=${encodeURIComponent(rawThumbnail)}`
+				: "/placeholder.svg?height=300&width=500";
 			mediaType = "reel";
 		} else if (url.includes("/p/")) {
-			title = "Instagram Post";
+			title = response.post_info.caption || "Instagram Post";
+			const rawThumbnail = response.media_details[0].url;
+			thumbnail = rawThumbnail
+				? `/api/image-proxy?url=${encodeURIComponent(rawThumbnail)}`
+				: "/placeholder.svg?height=300&width=500";
 			mediaType = "post";
 		} else if (!url.includes("/p/") && !url.includes("/reel/")) {
-			const username =
-				url.split("instagram.com/")[1]?.split("/")[0] || "user";
+			const username = url.split("/")[3]?.split("?")[0] || "unknown";
 			title = `Profile Photo: @${username}`;
+			const rawThumbnail = response.media_details[0].url;
+			thumbnail = rawThumbnail
+				? `/api/image-proxy?url=${encodeURIComponent(rawThumbnail)}`
+				: "/placeholder.svg?height=300&width=500";
 			mediaType = "profile";
 		}
 
@@ -242,7 +252,6 @@ async function handleInstagram(url: string) {
 			type: url.includes(".mp4") ? "video" : "image",
 			quality: url.includes("750x750") ? "high" : "standard",
 		}));
-
 		return {
 			success: true,
 			message: `Instagram ${mediaType} processed successfully`,
@@ -251,11 +260,7 @@ async function handleInstagram(url: string) {
 			)}&type=${mediaType}&media_url=${encodeURIComponent(mediaUrl)}`,
 			type: mediaType,
 			title,
-			thumbnail:
-				type === "video"
-					? mediaUrls.find((m) => m.type === "image")?.url ||
-					  "/placeholder.svg?height=300&width=500"
-					: mediaUrl,
+			thumbnail,
 			mediaType: type,
 			mediaUrls,
 		};
@@ -286,7 +291,119 @@ async function handleFacebook(url: string) {
 			videoId = url.split("watch?v=")[1]?.split("&")[0] || "";
 		}
 
-		// For Facebook, we'll use a direct proxy approach
+		// First get cookies by visiting main page
+		const mainPageResponse = await fetch("https://www.facebook.com", {
+			headers: {
+				"User-Agent":
+					"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+				Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+				"Accept-Language": "en-US,en;q=0.5",
+				"sec-ch-ua":
+					'"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+				"sec-ch-ua-mobile": "?0",
+				"sec-ch-ua-platform": '"macOS"',
+			},
+		});
+
+		const cookies = mainPageResponse.headers.get("set-cookie");
+
+		// Try to convert to direct video URL
+		let videoPageUrl = url;
+		if (url.includes("watch?v=") && videoId) {
+			videoPageUrl = `https://www.facebook.com/video.php?v=${videoId}`;
+		}
+
+		// Fetch the video page with cookies
+		const response = await fetch(videoPageUrl, {
+			headers: {
+				"User-Agent":
+					"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+				Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+				"Accept-Language": "en-US,en;q=0.5",
+				Cookie: cookies || "",
+				Referer: "https://www.facebook.com/",
+				"sec-ch-ua":
+					'"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+				"sec-ch-ua-mobile": "?0",
+				"sec-ch-ua-platform": '"macOS"',
+			},
+		});
+
+		if (!response.ok) {
+			throw new Error(
+				`Failed to fetch Facebook page: ${response.statusText}`
+			);
+		}
+
+		const html = await response.text();
+
+		// Helper function to decode HTML entities
+		const decodeHtmlEntities = (text: string) => {
+			const entities: { [key: string]: string } = {
+				"&amp;": "&",
+				"&lt;": "<",
+				"&gt;": ">",
+				"&quot;": '"',
+				"&#39;": "'",
+				"&#x27;": "'",
+				"&#x2F;": "/",
+				"&#x5C;": "\\",
+				"&#96;": "`",
+				"&nbsp;": " ",
+			};
+			return text.replace(/&([^;]+);/g, (match, entity) => {
+				if (match in entities) {
+					return entities[match];
+				} else if (entity.match(/^#x[\da-f]+$/i)) {
+					return String.fromCharCode(parseInt(entity.substr(2), 16));
+				} else if (entity.match(/^#\d+$/)) {
+					return String.fromCharCode(parseInt(entity.substr(1), 10));
+				}
+				return match;
+			});
+		};
+
+		// Extract title and thumbnail from meta tags
+		let title = "Facebook Video";
+		let thumbnail = "/placeholder.svg?height=300&width=500";
+
+		// Try multiple ways to get title
+		const titlePatterns = [
+			/<meta property="og:title" content="([^"]+)"/i,
+			/<title>([^<]+)<\/title>/i,
+			/"name":"([^"]+)"/i,
+		];
+
+		for (const pattern of titlePatterns) {
+			const match = html.match(pattern);
+			if (match && match[1]) {
+				title = decodeHtmlEntities(match[1].trim());
+				break;
+			}
+		}
+
+		// Try multiple ways to get thumbnail
+		const thumbnailPatterns = [
+			/<meta property="og:image" content="([^"]+)"/i,
+			/"thumbnailImage":{"uri":"([^"]+)"/i,
+			/"preview_image_url":"([^"]+)"/i,
+		];
+
+		for (const pattern of thumbnailPatterns) {
+			const match = html.match(pattern);
+			if (match && match[1]) {
+				// Clean and decode the thumbnail URL
+				thumbnail = decodeHtmlEntities(
+					decodeURIComponent(match[1].replace(/\\/g, ""))
+				);
+				// If the URL is relative, make it absolute
+				if (thumbnail.startsWith("/")) {
+					thumbnail = `https://www.facebook.com${thumbnail}`;
+				}
+				break;
+			}
+		}
+
 		return {
 			success: true,
 			message: "Facebook video processed successfully",
@@ -294,11 +411,9 @@ async function handleFacebook(url: string) {
 				url
 			)}&type=facebook${videoId ? `&video_id=${videoId}` : ""}`,
 			type: "Video",
-			title: videoId
-				? `Facebook Video (ID: ${videoId})`
-				: "Facebook Video",
-			thumbnail: "/placeholder.svg?height=300&width=500",
-			isExternal: true, // This will open in a new tab
+			title: title,
+			thumbnail: thumbnail,
+			isExternal: true,
 			videoId,
 		};
 	} catch (error) {

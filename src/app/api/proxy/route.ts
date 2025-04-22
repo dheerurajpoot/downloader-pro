@@ -406,47 +406,174 @@ export async function GET(request: NextRequest) {
 
 			case "facebook": {
 				try {
-					// For Facebook, we'll try to get the video URL first
-					const response = await fetch(url, {
+					// First get the cookies by visiting the main page
+					const mainPageResponse = await fetch("https://www.facebook.com", {
 						headers: {
-							"User-Agent":
-								"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+							"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+							"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+							"Accept-Language": "en-US,en;q=0.5",
+							"sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+							"sec-ch-ua-mobile": "?0",
+							"sec-ch-ua-platform": '"macOS"',
+							"sec-fetch-dest": "document",
+							"sec-fetch-mode": "navigate",
+							"sec-fetch-site": "none",
+							"sec-fetch-user": "?1",
+							"upgrade-insecure-requests": "1"
+						}
+					});
+
+					// Get cookies from the response
+					const cookies = mainPageResponse.headers.get('set-cookie');
+
+					// Try to convert the URL to a direct video URL if it's a watch URL
+					let videoPageUrl = url;
+					if (url.includes('watch?v=')) {
+						const videoId = url.split('watch?v=')[1]?.split('&')[0];
+						if (videoId) {
+							videoPageUrl = `https://www.facebook.com/video.php?v=${videoId}`;
+						}
+					}
+
+					// Now fetch the video page with cookies
+					const response = await fetch(videoPageUrl, {
+						headers: {
+							"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+							"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+							"Accept-Language": "en-US,en;q=0.5",
+							"Cookie": cookies || '',
+							"sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+							"sec-ch-ua-mobile": "?0",
+							"sec-ch-ua-platform": '"macOS"',
+							"sec-fetch-dest": "document",
+							"sec-fetch-mode": "navigate",
+							"sec-fetch-site": "none",
+							"sec-fetch-user": "?1",
+							"upgrade-insecure-requests": "1",
+							"Referer": "https://www.facebook.com/"
 						},
 					});
 
 					if (!response.ok) {
-						throw new Error(
-							`Failed to fetch Facebook page: ${response.statusText}`
-						);
+						throw new Error(`Failed to fetch Facebook page: ${response.statusText}`);
 					}
 
 					const html = await response.text();
+					let videoUrl = null;
 
-					// Try to find HD video URL
-					const hdMatch = html.match(/hd_src:"([^"]+)"/i);
-					if (hdMatch && hdMatch[1]) {
-						return NextResponse.redirect(hdMatch[1]);
+					// Try to find video data in the page
+					const dataMatches = [
+						// Modern Facebook video patterns
+						{
+							pattern: /"playable_url_quality_hd":"([^"]+)"/,
+							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
+						},
+						{
+							pattern: /"playable_url":"([^"]+)"/,
+							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
+						},
+						{
+							pattern: /"browser_native_hd_url":"([^"]+)"/,
+							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
+						},
+						{
+							pattern: /"browser_native_sd_url":"([^"]+)"/,
+							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
+						},
+						// Video data from GraphQL
+						{
+							pattern: /"video":{[^}]*"url":"([^"]+)"/,
+							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
+						},
+						// Legacy patterns
+						{
+							pattern: /"hd_src":"([^"]+)"/,
+							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
+						},
+						{
+							pattern: /"sd_src":"([^"]+)"/,
+							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
+						},
+						// Embedded video URL
+						{
+							pattern: /"contentUrl":"([^"]+)"/,
+							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
+						}
+					];
+
+					// Try each pattern until we find a valid URL
+					for (const { pattern, handler } of dataMatches) {
+						const match = html.match(pattern);
+						if (match) {
+							videoUrl = handler(match);
+							if (videoUrl) break;
+						}
 					}
 
-					// Try to find SD video URL
-					const sdMatch = html.match(/sd_src:"([^"]+)"/i);
-					if (sdMatch && sdMatch[1]) {
-						return NextResponse.redirect(sdMatch[1]);
+					// If still no URL found, try the GraphQL approach
+					if (!videoUrl) {
+						// Split the HTML into smaller chunks to handle large files
+						const chunks = html.split('\n');
+						for (const chunk of chunks) {
+							if (chunk.includes('"video"') && chunk.includes('"playable_url"')) {
+								const graphqlMatch = chunk.match(/"video":{"id":"([^"]+)".*?"playable_url":"([^"]+)"/i);
+								if (graphqlMatch && graphqlMatch[2]) {
+									videoUrl = graphqlMatch[2].replace(/\\/g, "");
+									break;
+								}
+							}
+						}
 					}
 
-					// If no direct video URL found, try to find the video player URL
-					const playerMatch = html.match(/"playable_url":"([^"]+)"/i);
-					if (playerMatch && playerMatch[1]) {
-						const playerUrl = playerMatch[1].replace(/\\/g, "");
-						return NextResponse.redirect(playerUrl);
+					// If still no URL, try to find it in any script tag
+					if (!videoUrl) {
+						const scriptTags = html.match(/<script[^>]*>([\s\S]*?)<\/script>/gi) || [];
+						for (const script of scriptTags) {
+							if (script.includes('"playable_url"')) {
+								const urlMatch = script.match(/"playable_url":"([^"]+)"/i);
+								if (urlMatch && urlMatch[1]) {
+									videoUrl = urlMatch[1].replace(/\\/g, "");
+									break;
+								}
+							}
+						}
 					}
 
-					// If all else fails, redirect to original URL
-					return NextResponse.redirect(url);
+					if (videoUrl) {
+						// Create a filename for the video
+						const urlHash = createUrlHash(url);
+						fileName = `facebook-${urlHash}.mp4`;
+						contentType = "video/mp4";
+						const filePath = join(downloadsDir, fileName);
+
+						// Download the video if it doesn't exist
+						if (!existsSync(filePath)) {
+							const success = await downloadFileFromUrl(videoUrl, filePath);
+							if (!success) {
+								throw new Error("Failed to download Facebook video");
+							}
+						}
+
+						downloadPath = `/downloads/${fileName}`;
+					} else {
+						throw new Error(
+							"Could not access the Facebook video. This could be because:\n" +
+							"1. The video is private\n" +
+							"2. The video requires login\n" +
+							"3. The video has age restrictions\n" +
+							"4. The video URL is invalid or has expired\n\n" +
+							"Please make sure:\n" +
+							"- The video is public\n" +
+							"- You're using a direct link to the video post\n" +
+							"- The video hasn't been deleted"
+						);
+					}
 				} catch (error) {
 					console.error("Facebook video error:", error);
-					// If anything fails, redirect to original URL
-					return NextResponse.redirect(url);
+					return NextResponse.json(
+						{ error: error instanceof Error ? error.message : "Failed to download Facebook video. The video might be private or restricted." },
+						{ status: 500 }
+					);
 				}
 			}
 
