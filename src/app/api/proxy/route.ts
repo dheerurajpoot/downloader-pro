@@ -308,14 +308,25 @@ export async function GET(request: NextRequest) {
 					// Construct the video URL
 					const videoPageUrl = `https://www.facebook.com/video.php?v=${videoId}`;
 
-					// Fetch the video page with minimal headers
+					// Fetch the video page with enhanced headers for Vercel deployment
 					const response = await fetch(videoPageUrl, {
 						method: "GET",
 						headers: {
 							"User-Agent":
-								"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-							Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-							"Accept-Language": "en-US,en;q=0.5",
+								"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+							Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+							"Accept-Language": "en-US,en;q=0.9",
+							"Accept-Encoding": "gzip, deflate, br",
+							"Cache-Control": "no-cache",
+							"Sec-Ch-Ua":
+								'"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+							"Sec-Ch-Ua-Mobile": "?0",
+							"Sec-Ch-Ua-Platform": '"macOS"',
+							"Sec-Fetch-Dest": "document",
+							"Sec-Fetch-Mode": "navigate",
+							"Sec-Fetch-Site": "none",
+							"Sec-Fetch-User": "?1",
+							"Upgrade-Insecure-Requests": "1",
 						},
 					});
 
@@ -327,54 +338,6 @@ export async function GET(request: NextRequest) {
 
 					const html = await response.text();
 					let videoUrl = null;
-
-					// // Try to find video data in the page
-					// const dataMatches = [
-					// 	// Modern Facebook video patterns
-					// 	{
-					// 		pattern: /"playable_url_quality_hd":"([^"]+)"/,
-					// 		handler: (match: RegExpMatchArray) =>
-					// 			match[1].replace(/\\/g, ""),
-					// 	},
-					// 	{
-					// 		pattern: /"playable_url":"([^"]+)"/,
-					// 		handler: (match: RegExpMatchArray) =>
-					// 			match[1].replace(/\\/g, ""),
-					// 	},
-					// 	{
-					// 		pattern: /"browser_native_hd_url":"([^"]+)"/,
-					// 		handler: (match: RegExpMatchArray) =>
-					// 			match[1].replace(/\\/g, ""),
-					// 	},
-					// 	{
-					// 		pattern: /"browser_native_sd_url":"([^"]+)"/,
-					// 		handler: (match: RegExpMatchArray) =>
-					// 			match[1].replace(/\\/g, ""),
-					// 	},
-					// 	// Video data from GraphQL
-					// 	{
-					// 		pattern: /"video":{[^}]*"url":"([^"]+)"/,
-					// 		handler: (match: RegExpMatchArray) =>
-					// 			match[1].replace(/\\/g, ""),
-					// 	},
-					// 	// Legacy patterns
-					// 	{
-					// 		pattern: /"hd_src":"([^"]+)"/,
-					// 		handler: (match: RegExpMatchArray) =>
-					// 			match[1].replace(/\\/g, ""),
-					// 	},
-					// 	{
-					// 		pattern: /"sd_src":"([^"]+)"/,
-					// 		handler: (match: RegExpMatchArray) =>
-					// 			match[1].replace(/\\/g, ""),
-					// 	},
-					// 	// Embedded video URL
-					// 	{
-					// 		pattern: /"contentUrl":"([^"]+)"/,
-					// 		handler: (match: RegExpMatchArray) =>
-					// 			match[1].replace(/\\/g, ""),
-					// 	},
-					// ];
 
 					// Try to find the video URL in the HTML
 					const videoUrlMatch =
@@ -394,14 +357,21 @@ export async function GET(request: NextRequest) {
 						);
 					}
 
-					// Try to fetch the video content with appropriate headers
+					// Fetch video content with enhanced headers
 					const videoResponse = await fetch(videoUrl, {
 						method: "GET",
 						headers: {
 							"User-Agent":
-								"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-							Accept: "video/mp4,video/*;q=0.9,*/*;q=0.8",
-							"Accept-Language": "en-US,en;q=0.5",
+								"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+							Accept: "video/webm,video/mp4,video/*;q=0.9,application/x-mpegURL,*/*;q=0.8",
+							"Accept-Language": "en-US,en;q=0.9",
+							"Accept-Encoding": "gzip, deflate, br",
+							Range: "bytes=0-",
+							Referer: "https://www.facebook.com/",
+							Origin: "https://www.facebook.com",
+							"Sec-Fetch-Dest": "video",
+							"Sec-Fetch-Mode": "cors",
+							"Sec-Fetch-Site": "cross-site",
 						},
 					});
 
