@@ -66,7 +66,6 @@ export async function GET(request: NextRequest) {
 		let fileName: string = "";
 		let contentType: string = "";
 		let title: string | null = null;
-		let thumbnail: string | null = null;
 
 		switch (type) {
 			case "youtube": {
@@ -123,15 +122,16 @@ export async function GET(request: NextRequest) {
 					});
 
 					// Stream the video to the client
-					return new NextResponse(videoStream as unknown as ReadableStream, {
-						headers: {
-							"Content-Type": "video/mp4",
-							"Content-Disposition": generateContentDisposition(
-								title,
-								".mp4"
-							),
-						},
-					});
+					return new NextResponse(
+						videoStream as unknown as ReadableStream,
+						{
+							headers: {
+								"Content-Type": "video/mp4",
+								"Content-Disposition":
+									generateContentDisposition(title, ".mp4"),
+							},
+						}
+					);
 				} catch (error) {
 					const err = error as Error;
 					console.error("YouTube download error:", err);
@@ -460,16 +460,19 @@ export async function GET(request: NextRequest) {
 
 						// Stream directly to the client
 						const response = await fetch(videoUrl);
-						return new NextResponse(response.body as ReadableStream, {
-							headers: {
-								"Content-Type": contentType,
-								"Content-Disposition":
-									generateContentDisposition(
-										fileName,
-										".mp4"
-									),
-							},
-						});
+						return new NextResponse(
+							response.body as ReadableStream,
+							{
+								headers: {
+									"Content-Type": contentType,
+									"Content-Disposition":
+										generateContentDisposition(
+											fileName,
+											".mp4"
+										),
+								},
+							}
+						);
 					} else {
 						throw new Error(
 							"Could not access the Facebook video. This could be because:\n" +
