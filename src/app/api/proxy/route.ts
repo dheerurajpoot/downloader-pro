@@ -33,8 +33,6 @@ async function extractInstagramMediaUrl(
 	}
 }
 
-
-
 // Function to generate a content disposition filename
 function generateContentDisposition(title: string, extension: string): string {
 	// Remove invalid characters and trim
@@ -96,7 +94,6 @@ export async function GET(request: NextRequest) {
 
 					console.log("Video info retrieved successfully");
 					title = info.videoDetails.title;
-					thumbnail = info.videoDetails.thumbnails[0].url;
 
 					// Get available formats and select the appropriate one
 					console.log("Getting available formats...");
@@ -120,21 +117,19 @@ export async function GET(request: NextRequest) {
 						throw new Error("No suitable format found");
 					}
 
-					console.log(
-						"Starting download with format:",
-						selectedFormat.qualityLabel
-					);
-
-					// Download using the selected format
+					// Create a readable stream
 					const videoStream = ytdl.downloadFromInfo(info, {
 						format: selectedFormat,
 					});
 
-					// Stream directly to the client
-					return new NextResponse(videoStream as any, {
+					// Stream the video to the client
+					return new NextResponse(videoStream as unknown as ReadableStream, {
 						headers: {
 							"Content-Type": "video/mp4",
-							"Content-Disposition": generateContentDisposition(title, ".mp4"),
+							"Content-Disposition": generateContentDisposition(
+								title,
+								".mp4"
+							),
 						},
 					});
 				} catch (error) {
@@ -176,10 +171,13 @@ export async function GET(request: NextRequest) {
 						);
 
 					// Stream directly to the client
-					return new NextResponse(response.body as any, {
+					return new NextResponse(response.body as ReadableStream, {
 						headers: {
 							"Content-Type": contentType,
-							"Content-Disposition": generateContentDisposition(fileName, `.${isVideo ? "mp4" : "jpg"}`),
+							"Content-Disposition": generateContentDisposition(
+								fileName,
+								`.${isVideo ? "mp4" : "jpg"}`
+							),
 						},
 					});
 				} catch (error) {
@@ -223,10 +221,13 @@ export async function GET(request: NextRequest) {
 						);
 
 					// Stream directly to the client
-					return new NextResponse(response.body as any, {
+					return new NextResponse(response.body as ReadableStream, {
 						headers: {
 							"Content-Type": contentType,
-							"Content-Disposition": generateContentDisposition(fileName, `.${isVideo ? "mp4" : "jpg"}`),
+							"Content-Disposition": generateContentDisposition(
+								fileName,
+								`.${isVideo ? "mp4" : "jpg"}`
+							),
 						},
 					});
 				} catch (error) {
@@ -244,10 +245,7 @@ export async function GET(request: NextRequest) {
 				contentType = "image/jpeg";
 
 				// Extract the profile picture URL
-				const mediaUrl = await extractInstagramMediaUrl(
-					url,
-					"profile"
-				);
+				const mediaUrl = await extractInstagramMediaUrl(url, "profile");
 
 				if (!mediaUrl) {
 					return NextResponse.json(
@@ -266,14 +264,20 @@ export async function GET(request: NextRequest) {
 						);
 
 					// Stream directly to the client
-					return new NextResponse(response.body as any, {
+					return new NextResponse(response.body as ReadableStream, {
 						headers: {
 							"Content-Type": contentType,
-							"Content-Disposition": generateContentDisposition(fileName, ".jpg"),
+							"Content-Disposition": generateContentDisposition(
+								fileName,
+								".jpg"
+							),
 						},
 					});
 				} catch (error) {
-					console.error("Instagram profile picture download error:", error);
+					console.error(
+						"Instagram profile picture download error:",
+						error
+					);
 					return NextResponse.json(
 						{
 							error: "Failed to download Instagram profile picture",
@@ -287,29 +291,34 @@ export async function GET(request: NextRequest) {
 			case "facebook": {
 				try {
 					// First get the cookies by visiting the main page
-					const mainPageResponse = await fetch("https://www.facebook.com", {
-						headers: {
-							"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-							"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-							"Accept-Language": "en-US,en;q=0.5",
-							"sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-							"sec-ch-ua-mobile": "?0",
-							"sec-ch-ua-platform": '"macOS"',
-							"sec-fetch-dest": "document",
-							"sec-fetch-mode": "navigate",
-							"sec-fetch-site": "none",
-							"sec-fetch-user": "?1",
-							"upgrade-insecure-requests": "1"
+					const mainPageResponse = await fetch(
+						"https://www.facebook.com",
+						{
+							headers: {
+								"User-Agent":
+									"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+								Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+								"Accept-Language": "en-US,en;q=0.5",
+								"sec-ch-ua":
+									'"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+								"sec-ch-ua-mobile": "?0",
+								"sec-ch-ua-platform": '"macOS"',
+								"sec-fetch-dest": "document",
+								"sec-fetch-mode": "navigate",
+								"sec-fetch-site": "none",
+								"sec-fetch-user": "?1",
+								"upgrade-insecure-requests": "1",
+							},
 						}
-					});
+					);
 
 					// Get cookies from the response
-					const cookies = mainPageResponse.headers.get('set-cookie');
+					const cookies = mainPageResponse.headers.get("set-cookie");
 
 					// Try to convert the URL to a direct video URL if it's a watch URL
 					let videoPageUrl = url;
-					if (url.includes('watch?v=')) {
-						const videoId = url.split('watch?v=')[1]?.split('&')[0];
+					if (url.includes("watch?v=")) {
+						const videoId = url.split("watch?v=")[1]?.split("&")[0];
 						if (videoId) {
 							videoPageUrl = `https://www.facebook.com/video.php?v=${videoId}`;
 						}
@@ -318,11 +327,13 @@ export async function GET(request: NextRequest) {
 					// Now fetch the video page with cookies
 					const response = await fetch(videoPageUrl, {
 						headers: {
-							"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-							"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+							"User-Agent":
+								"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+							Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
 							"Accept-Language": "en-US,en;q=0.5",
-							"Cookie": cookies || '',
-							"sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+							Cookie: cookies || "",
+							"sec-ch-ua":
+								'"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
 							"sec-ch-ua-mobile": "?0",
 							"sec-ch-ua-platform": '"macOS"',
 							"sec-fetch-dest": "document",
@@ -330,12 +341,14 @@ export async function GET(request: NextRequest) {
 							"sec-fetch-site": "none",
 							"sec-fetch-user": "?1",
 							"upgrade-insecure-requests": "1",
-							"Referer": "https://www.facebook.com/"
+							Referer: "https://www.facebook.com/",
 						},
 					});
 
 					if (!response.ok) {
-						throw new Error(`Failed to fetch Facebook page: ${response.statusText}`);
+						throw new Error(
+							`Failed to fetch Facebook page: ${response.statusText}`
+						);
 					}
 
 					const html = await response.text();
@@ -346,39 +359,47 @@ export async function GET(request: NextRequest) {
 						// Modern Facebook video patterns
 						{
 							pattern: /"playable_url_quality_hd":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
+							handler: (match: RegExpMatchArray) =>
+								match[1].replace(/\\/g, ""),
 						},
 						{
 							pattern: /"playable_url":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
+							handler: (match: RegExpMatchArray) =>
+								match[1].replace(/\\/g, ""),
 						},
 						{
 							pattern: /"browser_native_hd_url":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
+							handler: (match: RegExpMatchArray) =>
+								match[1].replace(/\\/g, ""),
 						},
 						{
 							pattern: /"browser_native_sd_url":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
+							handler: (match: RegExpMatchArray) =>
+								match[1].replace(/\\/g, ""),
 						},
 						// Video data from GraphQL
 						{
 							pattern: /"video":{[^}]*"url":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
+							handler: (match: RegExpMatchArray) =>
+								match[1].replace(/\\/g, ""),
 						},
 						// Legacy patterns
 						{
 							pattern: /"hd_src":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
+							handler: (match: RegExpMatchArray) =>
+								match[1].replace(/\\/g, ""),
 						},
 						{
 							pattern: /"sd_src":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
+							handler: (match: RegExpMatchArray) =>
+								match[1].replace(/\\/g, ""),
 						},
 						// Embedded video URL
 						{
 							pattern: /"contentUrl":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) => match[1].replace(/\\/g, "")
-						}
+							handler: (match: RegExpMatchArray) =>
+								match[1].replace(/\\/g, ""),
+						},
 					];
 
 					// Try each pattern until we find a valid URL
@@ -393,12 +414,20 @@ export async function GET(request: NextRequest) {
 					// If still no URL found, try the GraphQL approach
 					if (!videoUrl) {
 						// Split the HTML into smaller chunks to handle large files
-						const chunks = html.split('\n');
+						const chunks = html.split("\n");
 						for (const chunk of chunks) {
-							if (chunk.includes('"video"') && chunk.includes('"playable_url"')) {
-								const graphqlMatch = chunk.match(/"video":{"id":"([^"]+)".*?"playable_url":"([^"]+)"/i);
+							if (
+								chunk.includes('"video"') &&
+								chunk.includes('"playable_url"')
+							) {
+								const graphqlMatch = chunk.match(
+									/"video":{"id":"([^"]+)".*?"playable_url":"([^"]+)"/i
+								);
 								if (graphqlMatch && graphqlMatch[2]) {
-									videoUrl = graphqlMatch[2].replace(/\\/g, "");
+									videoUrl = graphqlMatch[2].replace(
+										/\\/g,
+										""
+									);
 									break;
 								}
 							}
@@ -407,10 +436,14 @@ export async function GET(request: NextRequest) {
 
 					// If still no URL, try to find it in any script tag
 					if (!videoUrl) {
-						const scriptTags = html.match(/<script[^>]*>([\s\S]*?)<\/script>/gi) || [];
+						const scriptTags =
+							html.match(/<script[^>]*>([\s\S]*?)<\/script>/gi) ||
+							[];
 						for (const script of scriptTags) {
 							if (script.includes('"playable_url"')) {
-								const urlMatch = script.match(/"playable_url":"([^"]+)"/i);
+								const urlMatch = script.match(
+									/"playable_url":"([^"]+)"/i
+								);
 								if (urlMatch && urlMatch[1]) {
 									videoUrl = urlMatch[1].replace(/\\/g, "");
 									break;
@@ -427,29 +460,38 @@ export async function GET(request: NextRequest) {
 
 						// Stream directly to the client
 						const response = await fetch(videoUrl);
-						return new NextResponse(response.body as any, {
+						return new NextResponse(response.body as ReadableStream, {
 							headers: {
 								"Content-Type": contentType,
-								"Content-Disposition": generateContentDisposition(fileName, ".mp4"),
+								"Content-Disposition":
+									generateContentDisposition(
+										fileName,
+										".mp4"
+									),
 							},
 						});
 					} else {
 						throw new Error(
 							"Could not access the Facebook video. This could be because:\n" +
-							"1. The video is private\n" +
-							"2. The video requires login\n" +
-							"3. The video has age restrictions\n" +
-							"4. The video URL is invalid or has expired\n\n" +
-							"Please make sure:\n" +
-							"- The video is public\n" +
-							"- You're using a direct link to the video post\n" +
-							"- The video hasn't been deleted"
+								"1. The video is private\n" +
+								"2. The video requires login\n" +
+								"3. The video has age restrictions\n" +
+								"4. The video URL is invalid or has expired\n\n" +
+								"Please make sure:\n" +
+								"- The video is public\n" +
+								"- You're using a direct link to the video post\n" +
+								"- The video hasn't been deleted"
 						);
 					}
 				} catch (error) {
 					console.error("Facebook video error:", error);
 					return NextResponse.json(
-						{ error: error instanceof Error ? error.message : "Failed to download Facebook video. The video might be private or restricted." },
+						{
+							error:
+								error instanceof Error
+									? error.message
+									: "Failed to download Facebook video. The video might be private or restricted.",
+						},
 						{ status: 500 }
 					);
 				}
