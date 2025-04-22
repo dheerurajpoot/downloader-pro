@@ -297,7 +297,8 @@ export async function GET(request: NextRequest) {
 					} else if (url.includes("videos/")) {
 						videoId = url.split("videos/")[1]?.split("/")[0] || "";
 					} else if (url.includes("video.php?v=")) {
-						videoId = url.split("video.php?v=")[1]?.split("&")[0] || "";
+						videoId =
+							url.split("video.php?v=")[1]?.split("&")[0] || "";
 					}
 
 					if (!videoId) {
@@ -311,10 +312,11 @@ export async function GET(request: NextRequest) {
 					const response = await fetch(videoPageUrl, {
 						method: "GET",
 						headers: {
-							"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-							"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-							"Accept-Language": "en-US,en;q=0.5"
-						}
+							"User-Agent":
+								"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+							Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+							"Accept-Language": "en-US,en;q=0.5",
+						},
 					});
 
 					if (!response.ok) {
@@ -326,56 +328,57 @@ export async function GET(request: NextRequest) {
 					const html = await response.text();
 					let videoUrl = null;
 
-					// Try to find video data in the page
-					const dataMatches = [
-						// Modern Facebook video patterns
-						{
-							pattern: /"playable_url_quality_hd":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) =>
-								match[1].replace(/\\/g, ""),
-						},
-						{
-							pattern: /"playable_url":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) =>
-								match[1].replace(/\\/g, ""),
-						},
-						{
-							pattern: /"browser_native_hd_url":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) =>
-								match[1].replace(/\\/g, ""),
-						},
-						{
-							pattern: /"browser_native_sd_url":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) =>
-								match[1].replace(/\\/g, ""),
-						},
-						// Video data from GraphQL
-						{
-							pattern: /"video":{[^}]*"url":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) =>
-								match[1].replace(/\\/g, ""),
-						},
-						// Legacy patterns
-						{
-							pattern: /"hd_src":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) =>
-								match[1].replace(/\\/g, ""),
-						},
-						{
-							pattern: /"sd_src":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) =>
-								match[1].replace(/\\/g, ""),
-						},
-						// Embedded video URL
-						{
-							pattern: /"contentUrl":"([^"]+)"/,
-							handler: (match: RegExpMatchArray) =>
-								match[1].replace(/\\/g, ""),
-						},
-					];
+					// // Try to find video data in the page
+					// const dataMatches = [
+					// 	// Modern Facebook video patterns
+					// 	{
+					// 		pattern: /"playable_url_quality_hd":"([^"]+)"/,
+					// 		handler: (match: RegExpMatchArray) =>
+					// 			match[1].replace(/\\/g, ""),
+					// 	},
+					// 	{
+					// 		pattern: /"playable_url":"([^"]+)"/,
+					// 		handler: (match: RegExpMatchArray) =>
+					// 			match[1].replace(/\\/g, ""),
+					// 	},
+					// 	{
+					// 		pattern: /"browser_native_hd_url":"([^"]+)"/,
+					// 		handler: (match: RegExpMatchArray) =>
+					// 			match[1].replace(/\\/g, ""),
+					// 	},
+					// 	{
+					// 		pattern: /"browser_native_sd_url":"([^"]+)"/,
+					// 		handler: (match: RegExpMatchArray) =>
+					// 			match[1].replace(/\\/g, ""),
+					// 	},
+					// 	// Video data from GraphQL
+					// 	{
+					// 		pattern: /"video":{[^}]*"url":"([^"]+)"/,
+					// 		handler: (match: RegExpMatchArray) =>
+					// 			match[1].replace(/\\/g, ""),
+					// 	},
+					// 	// Legacy patterns
+					// 	{
+					// 		pattern: /"hd_src":"([^"]+)"/,
+					// 		handler: (match: RegExpMatchArray) =>
+					// 			match[1].replace(/\\/g, ""),
+					// 	},
+					// 	{
+					// 		pattern: /"sd_src":"([^"]+)"/,
+					// 		handler: (match: RegExpMatchArray) =>
+					// 			match[1].replace(/\\/g, ""),
+					// 	},
+					// 	// Embedded video URL
+					// 	{
+					// 		pattern: /"contentUrl":"([^"]+)"/,
+					// 		handler: (match: RegExpMatchArray) =>
+					// 			match[1].replace(/\\/g, ""),
+					// 	},
+					// ];
 
 					// Try to find the video URL in the HTML
-					const videoUrlMatch = html.match(/"playable_url":"([^"]+)"/i) ||
+					const videoUrlMatch =
+						html.match(/"playable_url":"([^"]+)"/i) ||
 						html.match(/"browser_native_hd_url":"([^"]+)"/i) ||
 						html.match(/"browser_native_sd_url":"([^"]+)"/i) ||
 						html.match(/"hd_src":"([^"]+)"/i) ||
@@ -386,21 +389,26 @@ export async function GET(request: NextRequest) {
 					}
 
 					if (!videoUrl) {
-						throw new Error("Video URL not found. The video might be private, requires login, or has been deleted.");
+						throw new Error(
+							"Video URL not found. The video might be private, requires login, or has been deleted."
+						);
 					}
 
 					// Try to fetch the video content with appropriate headers
 					const videoResponse = await fetch(videoUrl, {
 						method: "GET",
 						headers: {
-							"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-							"Accept": "video/mp4,video/*;q=0.9,*/*;q=0.8",
-							"Accept-Language": "en-US,en;q=0.5"
-						}
+							"User-Agent":
+								"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+							Accept: "video/mp4,video/*;q=0.9,*/*;q=0.8",
+							"Accept-Language": "en-US,en;q=0.5",
+						},
 					});
 
 					if (!videoResponse.ok) {
-						throw new Error(`Failed to fetch video content: ${videoResponse.statusText}`);
+						throw new Error(
+							`Failed to fetch video content: ${videoResponse.statusText}`
+						);
 					}
 
 					// Create a filename for the video
@@ -409,15 +417,23 @@ export async function GET(request: NextRequest) {
 					contentType = "video/mp4";
 
 					// Stream the video to the client with caching headers
-					return new NextResponse(videoResponse.body as ReadableStream, {
-						headers: {
-							"Content-Type": contentType,
-							"Content-Disposition": generateContentDisposition(fileName, ".mp4"),
-							"Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-							"Pragma": "no-cache",
-							"Expires": "0"
+					return new NextResponse(
+						videoResponse.body as ReadableStream,
+						{
+							headers: {
+								"Content-Type": contentType,
+								"Content-Disposition":
+									generateContentDisposition(
+										fileName,
+										".mp4"
+									),
+								"Cache-Control":
+									"no-store, no-cache, must-revalidate, proxy-revalidate",
+								Pragma: "no-cache",
+								Expires: "0",
+							},
 						}
-					});
+					);
 				} catch (error) {
 					console.error("Facebook video error:", error);
 					return NextResponse.json(

@@ -7,13 +7,7 @@ import { downloadContent } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-	Download,
-	Loader2,
-	LinkIcon,
-	AlertCircle,
-	ExternalLink,
-} from "lucide-react";
+import { Download, Loader2, LinkIcon, AlertCircle } from "lucide-react";
 import toast from "react-hot-toast";
 
 export default function DownloaderForm() {
@@ -65,14 +59,16 @@ export default function DownloaderForm() {
 		try {
 			setDownloadStarted(true);
 			const response = await fetch(result.downloadUrl);
-			
+
 			if (!response.ok) {
 				throw new Error(`HTTP error! status: ${response.status}`);
 			}
 
 			// Get the filename from the Content-Disposition header
-			const contentDisposition = response.headers.get('content-disposition');
-			let filename = 'download';
+			const contentDisposition = response.headers.get(
+				"content-disposition"
+			);
+			let filename = "download";
 			if (contentDisposition) {
 				const matches = /filename="([^"]+)"/.exec(contentDisposition);
 				if (matches && matches[1]) {
@@ -85,7 +81,7 @@ export default function DownloaderForm() {
 			const url = window.URL.createObjectURL(blob);
 
 			// Create a temporary link and click it
-			const a = document.createElement('a');
+			const a = document.createElement("a");
 			a.href = url;
 			a.download = filename;
 			document.body.appendChild(a);
@@ -94,10 +90,10 @@ export default function DownloaderForm() {
 
 			// Clean up the blob URL
 			window.URL.revokeObjectURL(url);
-			toast.success('Download completed!');
+			toast.success("Download completed!");
 		} catch (error) {
-			console.error('Download error:', error);
-			toast.error('Failed to download. Please try again.');
+			console.error("Download error:", error);
+			toast.error("Failed to download. Please try again.");
 		} finally {
 			setDownloadStarted(false);
 		}
@@ -131,7 +127,6 @@ export default function DownloaderForm() {
 			}
 		} catch (error) {
 			console.error("Download error:", error);
-			toast.error("Download failed. Please try again.");
 		} finally {
 			setDownloadStarted(false);
 		}
@@ -213,17 +208,10 @@ export default function DownloaderForm() {
 													</>
 												) : (
 													<>
-														{result.isExternal ? (
-															<ExternalLink className='w-4 h-4 mr-2' />
-														) : (
-															<Download className='w-4 h-4 mr-2' />
-														)}
-														{result.isExternal
-															? "Open Video"
-															: `Download ${
-																	result.type ||
-																	"Content"
-															  }`}
+														<Download className='w-4 h-4 mr-2' />
+														Download{" "}
+														{result.type ||
+															"Content"}
 													</>
 												)}
 											</Button>
