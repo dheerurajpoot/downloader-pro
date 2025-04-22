@@ -362,15 +362,20 @@ export async function GET(request: NextRequest) {
 					for (const pattern of patterns) {
 						const matches = html.match(pattern);
 						if (matches && matches[1]) {
-							const potentialUrl = matches[1].replace(/\\/g, "").replace(/&amp;/g, '&');
+							const potentialUrl = matches[1]
+								.replace(/\\/g, "")
+								.replace(/&amp;/g, "&");
 							// Validate if it's a proper URL
 							try {
 								new URL(potentialUrl);
 								videoUrlMatch = matches;
-								console.log('Found valid video URL:', potentialUrl);
 								break;
 							} catch (e) {
-								console.log('Invalid URL found:', potentialUrl);
+								console.log(
+									"Invalid URL found:",
+									potentialUrl,
+									e
+								);
 							}
 						}
 					}
@@ -381,27 +386,34 @@ export async function GET(request: NextRequest) {
 
 					if (!videoUrl) {
 						// Try to find any video data in the page
-						const videoData = html.match(/"videoData":\[([^\]]+)\]/i);
+						const videoData = html.match(
+							/"videoData":\[([^\]]+)\]/i
+						);
 						if (videoData && videoData[1]) {
 							try {
-								const parsedData = JSON.parse(`[${videoData[1]}]`);
+								const parsedData = JSON.parse(
+									`[${videoData[1]}]`
+								);
 								if (parsedData[0]?.video_url) {
 									videoUrl = parsedData[0].video_url;
-									console.log('Found video URL from videoData:', videoUrl);
+									console.log(
+										"Found video URL from videoData:",
+										videoUrl
+									);
 								}
 							} catch (e) {
-								console.log('Failed to parse videoData:', e);
+								console.log("Failed to parse videoData:", e);
 							}
 						}
 
 						if (!videoUrl) {
 							throw new Error(
 								"Could not find the video URL. This might be because:\n" +
-								"1. The video is private\n" +
-								"2. The video requires login\n" +
-								"3. The video has age restrictions\n" +
-								"4. The video URL format has changed\n\n" +
-								"Please ensure the video is public and try again."
+									"1. The video is private\n" +
+									"2. The video requires login\n" +
+									"3. The video has age restrictions\n" +
+									"4. The video URL format has changed\n\n" +
+									"Please ensure the video is public and try again."
 							);
 						}
 					}
