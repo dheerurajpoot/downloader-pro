@@ -62,10 +62,45 @@ export default function DownloaderForm() {
 	const handleDownload = async () => {
 		if (!result?.downloadUrl) return;
 
-		// // If it's a YouTube video, open it in a new tab
-		// if (result.isExternal) {
-		// 	window.open(result.downloadUrl, "_blank");
-		// 	toast.success("Opening video in a new tab");
+		try {
+			setDownloadStarted(true);
+			const response = await fetch(result.downloadUrl);
+			
+			if (!response.ok) {
+				throw new Error(`HTTP error! status: ${response.status}`);
+			}
+
+			// Get the filename from the Content-Disposition header
+			const contentDisposition = response.headers.get('content-disposition');
+			let filename = 'download';
+			if (contentDisposition) {
+				const matches = /filename="([^"]+)"/.exec(contentDisposition);
+				if (matches && matches[1]) {
+					filename = matches[1];
+				}
+			}
+
+			// Create a blob from the stream
+			const blob = await response.blob();
+			const url = window.URL.createObjectURL(blob);
+
+			// Create a temporary link and click it
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = filename;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+
+			// Clean up the blob URL
+			window.URL.revokeObjectURL(url);
+			toast.success('Download completed!');
+		} catch (error) {
+			console.error('Download error:', error);
+			toast.error('Failed to download. Please try again.');
+		} finally {
+			setDownloadStarted(false);
+		}
 		// 	return;
 		// }
 
