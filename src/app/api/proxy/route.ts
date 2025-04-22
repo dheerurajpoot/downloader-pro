@@ -339,22 +339,71 @@ export async function GET(request: NextRequest) {
 					const html = await response.text();
 					let videoUrl = null;
 
-					// Try to find the video URL in the HTML
-					const videoUrlMatch =
-						html.match(/"playable_url":"([^"]+)"/i) ||
-						html.match(/"browser_native_hd_url":"([^"]+)"/i) ||
-						html.match(/"browser_native_sd_url":"([^"]+)"/i) ||
-						html.match(/"hd_src":"([^"]+)"/i) ||
-						html.match(/"sd_src":"([^"]+)"/i);
+					// Try to find the video URL using multiple methods
+					const patterns = [
+						// GraphQL response patterns
+						/"playable_url_quality_hd":"([^"]+)"/i,
+						/"playable_url":"([^"]+)"/i,
+						/"browser_native_hd_url":"([^"]+)"/i,
+						/"browser_native_sd_url":"([^"]+)"/i,
+						/"hd_src":"([^"]+)"/i,
+						/"sd_src":"([^"]+)"/i,
+						/"video_url":"([^"]+)"/i,
+						/"contentUrl":"([^"]+)"/i,
+						// HTML5 video patterns
+						/<meta\s+property="og:video"\s+content="([^"]+)"/i,
+						/<meta\s+property="og:video:url"\s+content="([^"]+)"/i,
+						/<video[^>]+src="([^"]+)"[^>]*>/i,
+						/<video[^>]+data-src="([^"]+)"[^>]*>/i,
+					];
+
+					// Try each pattern
+					let videoUrlMatch = null;
+					for (const pattern of patterns) {
+						const matches = html.match(pattern);
+						if (matches && matches[1]) {
+							const potentialUrl = matches[1].replace(/\\/g, "").replace(/&amp;/g, '&');
+							// Validate if it's a proper URL
+							try {
+								new URL(potentialUrl);
+								videoUrlMatch = matches;
+								console.log('Found valid video URL:', potentialUrl);
+								break;
+							} catch (e) {
+								console.log('Invalid URL found:', potentialUrl);
+							}
+						}
+					}
 
 					if (videoUrlMatch && videoUrlMatch[1]) {
 						videoUrl = videoUrlMatch[1].replace(/\\/g, "");
 					}
 
 					if (!videoUrl) {
-						throw new Error(
-							"Video URL not found. The video might be private, requires login, or has been deleted."
-						);
+						// Try to find any video data in the page
+						const videoData = html.match(/"videoData":\[([^\]]+)\]/i);
+						if (videoData && videoData[1]) {
+							try {
+								const parsedData = JSON.parse(`[${videoData[1]}]`);
+								if (parsedData[0]?.video_url) {
+									videoUrl = parsedData[0].video_url;
+									console.log('Found video URL from videoData:', videoUrl);
+								}
+							} catch (e) {
+								console.log('Failed to parse videoData:', e);
+							}
+						}
+
+						if (!videoUrl) {
+							throw new Error(
+								"Could not find the video URL. This might be because:\n" +
+								"1. The video is private\n" +
+								"2. The video requires login\n" +
+								"3. The video has age restrictions\n" +
+								"4. The video URL format has changed\n\n" +
+								"Please ensure the video is public and try again."
+							);
+						}
 					}
 
 					// Fetch video content with enhanced headers
