@@ -13,20 +13,42 @@ async function extractInstagramMediaUrl(
 	type: "post" | "reel" | "profile"
 ): Promise<string | null> {
 	try {
-		const response = await fetch(url);
+		const response = await fetch(url, {
+			headers: {
+				"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+				"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+				"Accept-Language": "en-US,en;q=0.5",
+				"Referer": "https://www.instagram.com/",
+			},
+		});
 		if (!response.ok) return null;
 
 		const html = await response.text();
 
 		// Extract the media URL based on type
 		const patterns = {
-			post: /<meta property="og:image" content="([^"]+)"/i,
-			reel: /<meta property="og:video" content="([^"]+)"/i,
-			profile: /<meta property="og:image" content="([^"]+)"/i,
+			post: [
+				/<meta property="og:video" content="([^"]+)"/i,
+				/<meta property="og:image" content="([^"]+)"/i,
+			],
+			reel: [
+				/<meta property="og:video" content="([^"]+)"/i,
+				/<meta property="og:video:url" content="([^"]+)"/i,
+			],
+			profile: [
+				/<meta property="og:image" content="([^"]+)"/i,
+			],
 		};
 
-		const match = html.match(patterns[type]);
-		return match ? match[1] : null;
+		// Try each pattern for the type
+		for (const pattern of patterns[type]) {
+			const match = html.match(pattern);
+			if (match && match[1]) {
+				return match[1];
+			}
+		}
+		
+		return null;
 	} catch (error) {
 		console.error("Error extracting Instagram media URL:", error);
 		return null;
@@ -88,7 +110,7 @@ export async function GET(request: NextRequest) {
 						info = await ytdl.getInfo(url);
 					} catch (error) {
 						console.error("Error getting video info:", error);
-						throw new Error("Could not get video information");
+						throw new Error("Could not get video information. The video might be private, restricted, or unavailable.");
 					}
 
 					console.log("Video info retrieved successfully");
@@ -96,29 +118,53 @@ export async function GET(request: NextRequest) {
 
 					// Get available formats and select the appropriate one
 					console.log("Getting available formats...");
-					const formats = ytdl.filterFormats(
-						info.formats,
-						"videoandaudio"
-					);
-					let selectedFormat = formats.find(
-						(f) => f.itag === parseInt(quality || "18")
-					);
+					
+					// First try to get formats with both video and audio
+					let formats = ytdl.filterFormats(info.formats, "videoandaudio");
+					
+					// If no combined formats, get video-only formats
+					if (formats.length === 0) {
+						formats = info.formats.filter((f) => f.hasVideo && !f.hasAudio);
+					}
+					
+					// If still no formats, get any video format
+					if (formats.length === 0) {
+						formats = info.formats.filter((f) => f.hasVideo || f.qualityLabel);
+					}
 
+					let selectedFormat = null;
+					
+					// Try to find the requested quality
+					if (quality) {
+						selectedFormat = formats.find((f) => f.itag === parseInt(quality));
+					}
+
+					// If requested format not found or no quality specified, get best available
 					if (!selectedFormat) {
-						// Fallback to best available format
-						formats.sort(
-							(a, b) => (b.height || 0) - (a.height || 0)
-						);
+						// Sort by quality (height) descending
+						formats.sort((a, b) => {
+							const heightA = a.height || 0;
+							const heightB = b.height || 0;
+							return heightB - heightA;
+						});
 						selectedFormat = formats[0];
 					}
 
 					if (!selectedFormat) {
-						throw new Error("No suitable format found");
+						throw new Error("No suitable format found for this video");
 					}
+
+					console.log("Selected format:", {
+						itag: selectedFormat.itag,
+						quality: selectedFormat.qualityLabel || selectedFormat.quality,
+						hasAudio: selectedFormat.hasAudio,
+						hasVideo: selectedFormat.hasVideo,
+					});
 
 					// Create a readable stream
 					const videoStream = ytdl.downloadFromInfo(info, {
 						format: selectedFormat,
+						quality: "highest",
 					});
 
 					// Stream the video to the client
@@ -129,6 +175,7 @@ export async function GET(request: NextRequest) {
 								"Content-Type": "video/mp4",
 								"Content-Disposition":
 									generateContentDisposition(title, ".mp4"),
+								"Cache-Control": "no-cache",
 							},
 						}
 					);
@@ -139,36 +186,46 @@ export async function GET(request: NextRequest) {
 						{
 							error:
 								err.message ||
-								"Failed to download YouTube video",
+								"Failed to download YouTube video. The video might be private, age-restricted, or unavailable.",
 						},
 						{ status: 500 }
 					);
 				}
-				break;
 			}
 
 			case "reel":
 			case "post":
 			case "profile": {
-				if (!mediaUrl) {
+				// If mediaUrl is provided, use it directly (from actions.ts)
+				let finalMediaUrl = mediaUrl;
+				
+				// If no mediaUrl provided, try to extract it from the page
+				if (!finalMediaUrl) {
+					finalMediaUrl = await extractInstagramMediaUrl(url, type as "post" | "reel" | "profile");
+				}
+
+				if (!finalMediaUrl) {
 					return NextResponse.json(
-						{ error: "Missing media URL" },
+						{ error: `Could not extract Instagram ${type} URL` },
 						{ status: 400 }
 					);
 				}
 
-				const isVideo = mediaUrl.includes(".mp4");
-				fileName = `instagram-${type}-${urlHash}.${
-					isVideo ? "mp4" : "jpg"
-				}`;
+				const isVideo = finalMediaUrl.includes(".mp4") || finalMediaUrl.includes("/video/");
+				fileName = `instagram-${type}-${urlHash}.${isVideo ? "mp4" : "jpg"}`;
 				contentType = isVideo ? "video/mp4" : "image/jpeg";
 
 				try {
-					const response = await fetch(mediaUrl);
-					if (!response.ok)
-						throw new Error(
-							`HTTP error! status: ${response.status}`
-						);
+					const response = await fetch(finalMediaUrl, {
+						headers: {
+							"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+							"Referer": "https://www.instagram.com/",
+						},
+					});
+					
+					if (!response.ok) {
+						throw new Error(`HTTP error! status: ${response.status}`);
+					}
 
 					// Stream directly to the client
 					return new NextResponse(response.body as ReadableStream, {
@@ -187,126 +244,39 @@ export async function GET(request: NextRequest) {
 						{ status: 500 }
 					);
 				}
-				break;
-			}
-
-			case "post": {
-				// Determine if it's a video or image post
-				const mediaUrl = await extractInstagramMediaUrl(url, "post");
-
-				if (!mediaUrl) {
-					return NextResponse.json(
-						{ error: "Could not extract Instagram post URL" },
-						{ status: 500 }
-					);
-				}
-
-				// Check if it's a video or image based on URL
-				const isVideo =
-					mediaUrl.includes(".mp4") || mediaUrl.includes("/video/");
-
-				if (isVideo) {
-					fileName = `instagram-post-${urlHash}.mp4`;
-					contentType = "video/mp4";
-				} else {
-					fileName = `instagram-post-${urlHash}.jpg`;
-					contentType = "image/jpeg";
-				}
-
-				try {
-					const response = await fetch(mediaUrl);
-					if (!response.ok)
-						throw new Error(
-							`HTTP error! status: ${response.status}`
-						);
-
-					// Stream directly to the client
-					return new NextResponse(response.body as ReadableStream, {
-						headers: {
-							"Content-Type": contentType,
-							"Content-Disposition": generateContentDisposition(
-								fileName,
-								`.${isVideo ? "mp4" : "jpg"}`
-							),
-						},
-					});
-				} catch (error) {
-					console.error("Instagram post download error:", error);
-					return NextResponse.json(
-						{ error: "Failed to download Instagram post" },
-						{ status: 500 }
-					);
-				}
-				break;
-			}
-
-			case "profile": {
-				fileName = `instagram-profile-${urlHash}.jpg`;
-				contentType = "image/jpeg";
-
-				// Extract the profile picture URL
-				const mediaUrl = await extractInstagramMediaUrl(url, "profile");
-
-				if (!mediaUrl) {
-					return NextResponse.json(
-						{
-							error: "Could not extract Instagram profile picture URL",
-						},
-						{ status: 500 }
-					);
-				}
-
-				try {
-					const response = await fetch(mediaUrl);
-					if (!response.ok)
-						throw new Error(
-							`HTTP error! status: ${response.status}`
-						);
-
-					// Stream directly to the client
-					return new NextResponse(response.body as ReadableStream, {
-						headers: {
-							"Content-Type": contentType,
-							"Content-Disposition": generateContentDisposition(
-								fileName,
-								".jpg"
-							),
-						},
-					});
-				} catch (error) {
-					console.error(
-						"Instagram profile picture download error:",
-						error
-					);
-					return NextResponse.json(
-						{
-							error: "Failed to download Instagram profile picture",
-						},
-						{ status: 500 }
-					);
-				}
-				break;
 			}
 
 			case "facebook": {
 				try {
-					// Extract video ID from different URL formats
+					// Extract video ID from different URL formats (including reels)
 					let videoId = "";
-					if (url.includes("watch?v=")) {
+					if (url.includes("/reel/")) {
+						videoId = url.split("/reel/")[1]?.split("/")[0]?.split("?")[0] || "";
+					} else if (url.includes("fb.watch/")) {
+						videoId = url.split("fb.watch/")[1]?.split("?")[0] || "";
+					} else if (url.includes("watch?v=")) {
 						videoId = url.split("watch?v=")[1]?.split("&")[0] || "";
 					} else if (url.includes("videos/")) {
 						videoId = url.split("videos/")[1]?.split("/")[0] || "";
 					} else if (url.includes("video.php?v=")) {
-						videoId =
-							url.split("video.php?v=")[1]?.split("&")[0] || "";
+						videoId = url.split("video.php?v=")[1]?.split("&")[0] || "";
+					}
+
+					// Use video_id from query params if available
+					const videoIdParam = searchParams.get("video_id");
+					if (videoIdParam) {
+						videoId = videoIdParam;
 					}
 
 					if (!videoId) {
 						throw new Error("Could not extract video ID from URL");
 					}
 
-					// Construct the video URL
-					const videoPageUrl = `https://www.facebook.com/video.php?v=${videoId}`;
+					// Construct the video URL (try different formats)
+					let videoPageUrl = `https://www.facebook.com/video.php?v=${videoId}`;
+					if (url.includes("/reel/") || url.includes("fb.watch")) {
+						videoPageUrl = `https://www.facebook.com/watch/?v=${videoId}`;
+					}
 
 					// Fetch the video page with enhanced headers for Vercel deployment
 					const response = await fetch(videoPageUrl, {

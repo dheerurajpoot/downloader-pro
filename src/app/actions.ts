@@ -15,7 +15,7 @@ export async function downloadContent(url: string) {
 			return await handleYouTube(url);
 		} else if (url.includes("instagram.com")) {
 			return await handleInstagram(url);
-		} else if (url.includes("facebook.com") || url.includes("fb.com")) {
+		} else if (url.includes("facebook.com") || url.includes("fb.com") || url.includes("fb.watch")) {
 			return await handleFacebook(url);
 		} else {
 			return {
@@ -201,6 +201,69 @@ async function handleYouTube(url: string, quality?: string) {
 	}
 }
 
+// Fallback function to extract reel directly from Instagram page
+async function extractReelDirectly(url: string) {
+	try {
+		const response = await fetch(url, {
+			headers: {
+				"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+				"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+				"Accept-Language": "en-US,en;q=0.5",
+				"Referer": "https://www.instagram.com/",
+			},
+		});
+
+		if (!response.ok) {
+			return null;
+		}
+
+		const html = await response.text();
+		
+		// Try to extract video URL from various patterns
+		const patterns = [
+			/<meta property="og:video" content="([^"]+)"/i,
+			/<meta property="og:video:url" content="([^"]+)"/i,
+			/"video_url":"([^"]+)"/i,
+			/"playback_url":"([^"]+)"/i,
+			/"video_versions":\[{"url":"([^"]+)"/i,
+		];
+
+		for (const pattern of patterns) {
+			const match = html.match(pattern);
+			if (match && match[1]) {
+				const videoUrl = match[1].replace(/\\u0026/g, "&").replace(/\\\//g, "/");
+				if (videoUrl.includes("http")) {
+					// Extract title
+					const titleMatch = html.match(/<meta property="og:title" content="([^"]+)"/i);
+					const title = titleMatch ? titleMatch[1] : "Instagram Reel";
+					
+					// Extract thumbnail
+					const thumbMatch = html.match(/<meta property="og:image" content="([^"]+)"/i);
+					const thumbnail = thumbMatch 
+						? `/api/image-proxy?url=${encodeURIComponent(thumbMatch[1])}`
+						: "/placeholder.svg?height=300&width=500";
+
+					return {
+						success: true,
+						message: "Instagram reel processed successfully",
+						downloadUrl: `/api/proxy?url=${encodeURIComponent(url)}&type=reel&media_url=${encodeURIComponent(videoUrl)}`,
+						type: "Reel",
+						title,
+						thumbnail,
+						mediaType: "video",
+						mediaUrls: [{ url: videoUrl, type: "video", quality: "high" }],
+					};
+				}
+			}
+		}
+
+		return null;
+	} catch (error) {
+		console.error("Error in fallback extraction:", error);
+		return null;
+	}
+}
+
 async function handleInstagram(url: string) {
 	try {
 		// Basic URL validation
@@ -208,38 +271,134 @@ async function handleInstagram(url: string) {
 			return { success: false, message: "Invalid Instagram URL" };
 		}
 
-		// Use instagram-url-direct to get media info
-		const response = await instagramGetUrl(url);
-		if (!response.url_list || response.url_list.length === 0) {
-			throw new Error("No media URLs found");
+		// Clean and normalize the URL
+		let cleanUrl = url.trim().split("?")[0];
+		
+		// Ensure URL has proper format
+		if (!cleanUrl.startsWith("http")) {
+			cleanUrl = `https://www.instagram.com${cleanUrl.startsWith("/") ? "" : "/"}${cleanUrl}`;
 		}
-		// Get media type and info
-		const mediaUrl = response.url_list[0];
+		
+		// Normalize reel URLs - ensure they're in the correct format
+		if (cleanUrl.includes("/reel/")) {
+			// Remove any trailing slashes or fragments
+			cleanUrl = cleanUrl.split("#")[0].replace(/\/$/, "");
+		}
+		
+		console.log("Processing Instagram URL:", cleanUrl);
+
+		// Use instagram-url-direct to get media info
+		let response;
+		try {
+			response = await instagramGetUrl(cleanUrl);
+			console.log("Instagram response received:", {
+				hasResponse: !!response,
+				hasUrlList: !!(response && response.url_list),
+				urlListLength: response?.url_list?.length || 0,
+				responseKeys: response ? Object.keys(response) : [],
+				responseType: typeof response,
+				isArray: Array.isArray(response),
+			});
+			
+			// Log full response structure for debugging (first 500 chars)
+			if (response) {
+				const responseStr = JSON.stringify(response).substring(0, 500);
+				console.log("Response preview:", responseStr);
+			}
+		} catch (libError) {
+			console.error("instagram-url-direct library error:", libError);
+			console.error("Error details:", {
+				message: libError instanceof Error ? libError.message : String(libError),
+				stack: libError instanceof Error ? libError.stack : undefined,
+			});
+			
+			// Try fallback method for reels - extract directly from page
+			if (cleanUrl.includes("/reel/")) {
+				console.log("Attempting fallback method for reel...");
+				try {
+					const fallbackResult = await extractReelDirectly(cleanUrl);
+					if (fallbackResult && fallbackResult.success) {
+						console.log("Fallback method succeeded!");
+						return fallbackResult;
+					}
+				} catch (fallbackError) {
+					console.error("Fallback method also failed:", fallbackError);
+				}
+			}
+			
+			const errorMsg = libError instanceof Error ? libError.message : String(libError);
+			throw new Error(
+				`Failed to fetch Instagram content. ${errorMsg || "Please ensure the reel is public and try again."}`
+			);
+		}
+		
+		// Check if response is valid
+		if (!response) {
+			throw new Error("No response from Instagram. The content might be private or unavailable.");
+		}
+
+		// Handle different response structures
+		let urlList: string[] = [];
+		
+		// Check for url_list (standard structure)
+		if (response.url_list && Array.isArray(response.url_list) && response.url_list.length > 0) {
+			urlList = response.url_list;
+		}
+		// Check for alternative structure (some versions return different format)
+		else if (response.url && typeof response.url === "string") {
+			urlList = [response.url];
+		}
+		// Check for media array
+		else if (Array.isArray(response) && response.length > 0) {
+			urlList = response.map((item: any) => item.url || item).filter(Boolean);
+		}
+		// Check for nested structure
+		else if (response.media && Array.isArray(response.media)) {
+			urlList = response.media.map((item: any) => item.url || item).filter(Boolean);
+		}
+		
+		if (urlList.length === 0) {
+			console.error("No media URLs found in response:", JSON.stringify(response, null, 2));
+			throw new Error("No media URLs found. The post might be private, deleted, or unavailable.");
+		}
+		
+		// Get media type and info - prefer video URLs for reels, highest quality for posts
+		let mediaUrl = urlList[0];
+		
+		// For reels, prefer video URLs
+		if (cleanUrl.includes("/reel/")) {
+			const videoUrl = urlList.find((url: string) => url.includes(".mp4") || url.includes("video"));
+			if (videoUrl) {
+				mediaUrl = videoUrl;
+			}
+		}
+		
 		const isVideo = mediaUrl.includes(".mp4");
 		const type = isVideo ? "video" : "image";
 
 		// Get media info based on URL type
 		let title = "Instagram Content";
-		let mediaType = "post"; // Default to post
+		let mediaType: "post" | "reel" | "profile" = "post"; // Default to post
 		let thumbnail = "/placeholder.svg?height=300&width=500";
-		if (url.includes("/reel/")) {
-			title = response.post_info.caption || "Instagram Reel";
-			const rawThumbnail = response.media_details[0].thumbnail;
+		
+		if (cleanUrl.includes("/reel/")) {
+			title = response.post_info?.caption || "Instagram Reel";
+			const rawThumbnail = response.media_details?.[0]?.thumbnail || response.media_details?.[0]?.url;
 			thumbnail = rawThumbnail
 				? `/api/image-proxy?url=${encodeURIComponent(rawThumbnail)}`
 				: "/placeholder.svg?height=300&width=500";
 			mediaType = "reel";
-		} else if (url.includes("/p/")) {
-			title = response.post_info.caption || "Instagram Post";
-			const rawThumbnail = response.media_details[0].url;
+		} else if (cleanUrl.includes("/p/")) {
+			title = response.post_info?.caption || "Instagram Post";
+			const rawThumbnail = response.media_details?.[0]?.url || response.media_details?.[0]?.thumbnail;
 			thumbnail = rawThumbnail
 				? `/api/image-proxy?url=${encodeURIComponent(rawThumbnail)}`
 				: "/placeholder.svg?height=300&width=500";
 			mediaType = "post";
-		} else if (!url.includes("/p/") && !url.includes("/reel/")) {
-			const username = url.split("/")[3]?.split("?")[0] || "unknown";
+		} else if (!cleanUrl.includes("/p/") && !cleanUrl.includes("/reel/")) {
+			const username = cleanUrl.split("/")[3]?.split("?")[0] || "unknown";
 			title = `Profile Photo: @${username}`;
-			const rawThumbnail = response.media_details[0].url;
+			const rawThumbnail = response.media_details?.[0]?.url;
 			thumbnail = rawThumbnail
 				? `/api/image-proxy?url=${encodeURIComponent(rawThumbnail)}`
 				: "/placeholder.svg?height=300&width=500";
@@ -247,18 +406,19 @@ async function handleInstagram(url: string) {
 		}
 
 		// Get all available media URLs
-		const mediaUrls = response.url_list.map((url) => ({
+		const mediaUrls = urlList.map((url: string) => ({
 			url,
-			type: url.includes(".mp4") ? "video" : "image",
-			quality: url.includes("750x750") ? "high" : "standard",
+			type: url.includes(".mp4") || url.includes("video") ? "video" : "image",
+			quality: url.includes("750x750") || url.includes("1080x1080") ? "high" : "standard",
 		}));
+		
 		return {
 			success: true,
 			message: `Instagram ${mediaType} processed successfully`,
 			downloadUrl: `/api/proxy?url=${encodeURIComponent(
-				url
+				cleanUrl
 			)}&type=${mediaType}&media_url=${encodeURIComponent(mediaUrl)}`,
-			type: mediaType,
+			type: mediaType === "reel" ? "Reel" : mediaType === "post" ? "Post" : "Profile",
 			title,
 			thumbnail,
 			mediaType: type,
@@ -266,12 +426,26 @@ async function handleInstagram(url: string) {
 		};
 	} catch (error) {
 		console.error("Error handling Instagram:", error);
+		const errorMessage = error instanceof Error ? error.message : "Unknown error";
+		
+		// Provide more helpful error messages
+		if (errorMessage.includes("private") || errorMessage.includes("unavailable")) {
+			return {
+				success: false,
+				message: "The Instagram reel appears to be private, deleted, or unavailable. Please ensure it's a public reel and try again.",
+			};
+		}
+		
+		if (errorMessage.includes("Failed to fetch")) {
+			return {
+				success: false,
+				message: "Could not connect to Instagram. Please check your internet connection and try again.",
+			};
+		}
+		
 		return {
 			success: false,
-			message:
-				error instanceof Error
-					? error.message
-					: "Failed to process Instagram content. Please try again.",
+			message: errorMessage || "Failed to process Instagram content. Please ensure the reel is public and try again.",
 		};
 	}
 }
@@ -279,16 +453,22 @@ async function handleInstagram(url: string) {
 async function handleFacebook(url: string) {
 	try {
 		// Basic URL validation
-		if (!url.includes("facebook.com") && !url.includes("fb.com")) {
+		if (!url.includes("facebook.com") && !url.includes("fb.com") && !url.includes("fb.watch")) {
 			return { success: false, message: "Invalid Facebook URL" };
 		}
 
-		// Extract video ID if possible
+		// Extract video ID if possible (supports reels, videos, and watch URLs)
 		let videoId = "";
-		if (url.includes("videos/")) {
+		if (url.includes("/reel/")) {
+			videoId = url.split("/reel/")[1]?.split("/")[0]?.split("?")[0] || "";
+		} else if (url.includes("videos/")) {
 			videoId = url.split("videos/")[1]?.split("/")[0] || "";
 		} else if (url.includes("watch?v=")) {
 			videoId = url.split("watch?v=")[1]?.split("&")[0] || "";
+		} else if (url.includes("fb.watch/")) {
+			videoId = url.split("fb.watch/")[1]?.split("?")[0] || "";
+		} else if (url.includes("video.php?v=")) {
+			videoId = url.split("video.php?v=")[1]?.split("&")[0] || "";
 		}
 
 		// First get cookies by visiting main page
@@ -311,6 +491,10 @@ async function handleFacebook(url: string) {
 		let videoPageUrl = url;
 		if (url.includes("watch?v=") && videoId) {
 			videoPageUrl = `https://www.facebook.com/video.php?v=${videoId}`;
+		} else if (url.includes("fb.watch/") && videoId) {
+			videoPageUrl = `https://www.facebook.com/watch/?v=${videoId}`;
+		} else if (url.includes("/reel/") && videoId) {
+			videoPageUrl = `https://www.facebook.com/reel/${videoId}`;
 		}
 
 		// Fetch the video page with cookies
@@ -364,7 +548,8 @@ async function handleFacebook(url: string) {
 		};
 
 		// Extract title and thumbnail from meta tags
-		let title = "Facebook Video";
+		const isReel = url.includes("/reel/") || url.includes("fb.watch");
+		let title = isReel ? "Facebook Reel" : "Facebook Video";
 		let thumbnail = "/placeholder.svg?height=300&width=500";
 
 		// Try multiple ways to get title
@@ -406,14 +591,14 @@ async function handleFacebook(url: string) {
 
 		return {
 			success: true,
-			message: "Facebook video processed successfully",
+			message: isReel ? "Facebook reel processed successfully" : "Facebook video processed successfully",
 			downloadUrl: `/api/proxy?url=${encodeURIComponent(
 				url
 			)}&type=facebook${videoId ? `&video_id=${videoId}` : ""}`,
-			type: "Video",
+			type: isReel ? "Reel" : "Video",
 			title: title,
 			thumbnail: thumbnail,
-			isExternal: true,
+			isExternal: false,
 			videoId,
 		};
 	} catch (error) {

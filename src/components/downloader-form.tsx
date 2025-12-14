@@ -1,7 +1,6 @@
 "use client";
 
 import type React from "react";
-
 import { useState } from "react";
 import { downloadContent } from "@/app/actions";
 import { Button } from "@/components/ui/button";
@@ -20,6 +19,7 @@ export default function DownloaderForm() {
 		type?: string;
 		title?: string;
 		thumbnail?: string;
+		mediaUrls?: { url: string; type: string; quality: string }[];
 		isExternal?: boolean;
 	} | null>(null);
 	const [downloadStarted, setDownloadStarted] = useState(false);
@@ -56,11 +56,21 @@ export default function DownloaderForm() {
 	const handleDownload = async () => {
 		if (!result?.downloadUrl) return;
 
+		setDownloadStarted(true);
+
 		try {
-			setDownloadStarted(true);
 			const response = await fetch(result.downloadUrl);
 
 			if (!response.ok) {
+				// Check if response is JSON (error response)
+				const contentType = response.headers.get("content-type");
+				if (contentType?.includes("application/json")) {
+					const errorData = await response.json();
+					throw new Error(
+						errorData.error ||
+							`Download failed: ${response.statusText}`
+					);
+				}
 				throw new Error(`HTTP error! status: ${response.status}`);
 			}
 
@@ -68,12 +78,22 @@ export default function DownloaderForm() {
 			const contentDisposition = response.headers.get(
 				"content-disposition"
 			);
-			let filename = "download";
+			let filename = result.title || "download";
+
 			if (contentDisposition) {
 				const matches = /filename="([^"]+)"/.exec(contentDisposition);
 				if (matches && matches[1]) {
-					filename = matches[1];
+					filename = decodeURIComponent(matches[1]);
 				}
+			} else {
+				// Fallback: determine extension from content type
+				const contentType = response.headers.get("content-type");
+				const extension = contentType?.includes("video")
+					? ".mp4"
+					: contentType?.includes("image")
+					? ".jpg"
+					: "";
+				filename = filename.replace(/[^a-z0-9]/gi, "-") + extension;
 			}
 
 			// Create a blob from the stream
@@ -93,44 +113,17 @@ export default function DownloaderForm() {
 			toast.success("Download completed!");
 		} catch (error) {
 			console.error("Download error:", error);
-			toast.error("Failed to download. Please try again.");
-		} finally {
-			setDownloadStarted(false);
-		}
-		// 	return;
-		// }
-
-		setDownloadStarted(true);
-
-		try {
-			// Trigger the download by making a request to the proxy endpoint
-			const response = await fetch(result.downloadUrl);
-
-			if (!response.ok) {
-				throw new Error(`Download failed: ${response.statusText}`);
-			}
-
-			const data = await response.json();
-
-			if (data.success && data.downloadUrl) {
-				// Create a temporary anchor element to trigger the download
-				const a = document.createElement("a");
-				a.href = data.downloadUrl;
-				a.download = data.fileName || "download";
-				document.body.appendChild(a);
-				a.click();
-				document.body.removeChild(a);
-
-				toast.success("Download started!");
-			} else {
-				throw new Error(data.error || "Download failed");
-			}
-		} catch (error) {
-			console.error("Download error:", error);
+			const errorMessage =
+				error instanceof Error
+					? error.message
+					: "Failed to download. Please try again.";
+			toast.error(errorMessage);
 		} finally {
 			setDownloadStarted(false);
 		}
 	};
+
+	console.log(result);
 
 	return (
 		<div className='w-full max-w-3xl mx-auto'>
@@ -175,21 +168,30 @@ export default function DownloaderForm() {
 							<div className='p-4 space-y-4'>
 								{result.success ? (
 									<>
-										{result.thumbnail && (
-											<div className='flex justify-center'>
-												<img
-													src={
-														result.thumbnail ||
-														"/placeholder.svg?height=300&width=500"
+										<div className='flex justify-center'>
+											{result.mediaUrls ? (
+												<video
+													controls
+													title={
+														result.title || "Video"
 													}
+													src={
+														result.mediaUrls?.[0]
+															?.url
+													}
+													className='object-cover rounded-lg max-h-[600px] border border-green-100'
+												/>
+											) : (
+												<img
 													alt={
 														result.title ||
 														"Thumbnail"
 													}
+													src={result.thumbnail}
 													className='object-cover rounded-lg max-h-[600px] border border-green-100'
 												/>
-											</div>
-										)}
+											)}
+										</div>
 
 										<h3 className='text-lg font-medium text-green-800'>
 											{result.title ||
@@ -216,20 +218,6 @@ export default function DownloaderForm() {
 												)}
 											</Button>
 										</div>
-
-										{result.isExternal && (
-											<div className='p-3 bg-yellow-50 border border-yellow-200 rounded-md text-sm text-yellow-800'>
-												<p>
-													<strong>Note:</strong> For
-													YouTube videos, we&apos;ll
-													open the video in a new tab.
-													You can use browser
-													extensions or online
-													services to download the
-													video.
-												</p>
-											</div>
-										)}
 									</>
 								) : (
 									<div className='flex items-center p-4 text-red-800 bg-red-50 rounded-lg'>
