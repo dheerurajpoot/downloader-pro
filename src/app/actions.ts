@@ -58,6 +58,7 @@ async function handleYouTube(url: string) {
 
 		// Add agent options to bypass bot detection
 		const agent = ytdl.createAgent(undefined, {
+			localAddress: undefined,
 		});
 
 		// Use getInfo instead of getBasicInfo to get all formats
