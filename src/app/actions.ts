@@ -3,7 +3,9 @@
 import ytdl from "@distube/ytdl-core";
 import { instagramGetUrl } from "instagram-url-direct";
 
-// No external Facebook library - using fetch-based extraction
+// No external Facebook library - using Puppeteer for browser automation
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const puppeteer = require("puppeteer");
 
 // Supported platform patterns
 const PLATFORM_PATTERNS = {
@@ -258,12 +260,87 @@ async function handleFacebook(url: string) {
 			cleanUrl.includes("/reels/") || 
 			cleanUrl.includes("fb.watch");
 
-		// Facebook blocks most server-side requests
-		// Return a message directing users to alternative solutions
-		return {
-			success: false,
-			message: "Facebook downloads are currently unavailable due to Facebook's anti-bot protection. Please try Instagram or YouTube instead.",
-		};
+		// Use Puppeteer to extract video URL from Facebook
+		const browser = await puppeteer.launch({
+			headless: true,
+			args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+		});
+
+		try {
+			const page = await browser.newPage();
+			
+			// Set user agent to look like a real browser
+			await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+			
+			// Navigate to the Facebook video page
+			await page.goto(cleanUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+			
+			// Wait a bit for the page to fully load
+			await new Promise(resolve => setTimeout(resolve, 3000));
+			
+			// Extract video URL and title from the page
+			const videoData = await page.evaluate(() => {
+				// Try to find video element
+				const videoElement = document.querySelector('video');
+				const videoUrl = videoElement?.src || videoElement?.querySelector('source')?.src || '';
+				
+				// Try to get title from meta tags
+				const titleMeta = document.querySelector('meta[property="og:title"]');
+				const title = titleMeta?.getAttribute('content') || document.title || 'Facebook Video';
+				
+				// Try to get thumbnail
+				const thumbMeta = document.querySelector('meta[property="og:image"]');
+				const thumbnail = thumbMeta?.getAttribute('content') || '';
+				
+				return { videoUrl, title, thumbnail };
+			});
+			
+			if (!videoData.videoUrl) {
+				// Try alternative: look for video URL in page content
+				const pageContent = await page.content();
+				
+				// Look for video URLs in the page source
+				const videoPatterns = [
+					/"playable_url_quality_hd":"([^"]+)"/,
+					/"playable_url":"([^"]+)"/,
+					/"browser_native_hd_url":"([^"]+)"/,
+					/"browser_native_sd_url":"([^"]+)"/,
+					/"hd_src":"([^"]+)"/,
+					/"sd_src":"([^"]+)"/,
+					/"video_url":"([^"]+)"/,
+				];
+				
+				let extractedUrl = '';
+				for (const pattern of videoPatterns) {
+					const match = pageContent.match(pattern);
+					if (match && match[1]) {
+						extractedUrl = match[1].replace(/\\/g, '').replace(/&amp;/g, '&');
+						break;
+					}
+				}
+				
+				if (extractedUrl) {
+					videoData.videoUrl = extractedUrl;
+				}
+			}
+			
+			if (!videoData.videoUrl) {
+				return { success: false, message: "Could not find video URL. The video might be private or require login." };
+			}
+			
+			return {
+				success: true,
+				message: `${isReel ? "Reel" : "Video"} ready for download`,
+				downloadUrl: `/api/proxy?url=${encodeURIComponent(cleanUrl)}&type=facebook&media_url=${encodeURIComponent(videoData.videoUrl)}`,
+				type: isReel ? "Reel" : "Video",
+				mediaType: "video",
+				title: videoData.title || (isReel ? "Facebook Reel" : "Facebook Video"),
+				thumbnail: videoData.thumbnail || "/placeholder.svg?height=300&width=500",
+				mediaUrls: [{ url: videoData.videoUrl, type: "video", quality: "high" }],
+			};
+		} finally {
+			await browser.close();
+		}
 	} catch (error) {
 		console.error("Error handling Facebook:", error);
 		return {
