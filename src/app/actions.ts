@@ -56,8 +56,20 @@ async function handleYouTube(url: string) {
 			return { success: false, message: ERROR_MESSAGES.YOUTUBE_INVALID };
 		}
 
+		// Add agent options to bypass bot detection
+		const agent = ytdl.createAgent(undefined, {
+		});
+
 		// Use getInfo instead of getBasicInfo to get all formats
-		const info = await ytdl.getInfo(url);
+		const info = await ytdl.getInfo(url, {
+			agent,
+			requestOptions: {
+				headers: {
+					'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+					'Accept-Language': 'en-US,en;q=0.9',
+				},
+			},
+		});
 		const title = info.videoDetails.title;
 		const thumbnail = info.videoDetails.thumbnails.at(-1)?.url;
 
@@ -101,6 +113,16 @@ async function handleYouTube(url: string) {
 		};
 	} catch (error) {
 		console.error("Error handling YouTube:", error);
+		
+		// Check if it's a bot detection error
+		const errorMessage = error instanceof Error ? error.message : '';
+		if (errorMessage.includes('Sign in') || errorMessage.includes('bot') || errorMessage.includes('verify')) {
+			return {
+				success: false,
+				message: "YouTube is blocking automated downloads. Please try downloading from Instagram or Facebook instead, or try again in a few minutes.",
+			};
+		}
+		
 		return {
 			success: false,
 			message: error instanceof Error ? error.message : ERROR_MESSAGES.YOUTUBE_FAILED,
@@ -275,7 +297,13 @@ async function handleFacebook(url: string) {
 		const browser = await puppeteer.launch({
 			args: isLocal 
 				? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-				: chromium.args,
+				: [
+					...chromium.args,
+					'--disable-gpu',
+					'--disable-dev-shm-usage',
+					'--single-process',
+					'--no-zygote',
+				],
 			executablePath: isLocal 
 				? undefined // Use bundled Chromium locally
 				: await chromium.executablePath(),
@@ -285,14 +313,20 @@ async function handleFacebook(url: string) {
 		try {
 			const page = await browser.newPage();
 			
+			// Set shorter timeout for serverless
+			page.setDefaultTimeout(15000);
+			
 			// Set user agent to look like a real browser
 			await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 			
-			// Navigate to the Facebook video page
-			await page.goto(cleanUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+			// Navigate to the Facebook video page with shorter timeout
+			await page.goto(cleanUrl, { 
+				waitUntil: 'domcontentloaded', // Changed from networkidle2 for faster loading
+				timeout: 15000 
+			});
 			
-			// Wait a bit for the page to fully load
-			await new Promise(resolve => setTimeout(resolve, 3000));
+			// Wait briefly for the page to load
+			await new Promise(resolve => setTimeout(resolve, 2000)); // Reduced from 3000
 			
 			// Extract video URL and title from the page
 			const videoData = await page.evaluate(() => {
@@ -359,6 +393,23 @@ async function handleFacebook(url: string) {
 		}
 	} catch (error) {
 		console.error("Error handling Facebook:", error);
+		
+		// Provide more helpful error messages
+		const errorMessage = error instanceof Error ? error.message : '';
+		if (errorMessage.includes('timeout') || errorMessage.includes('TimeoutError')) {
+			return {
+				success: false,
+				message: "Request timed out. Facebook videos may take longer to process. Please try again or use a shorter video.",
+			};
+		}
+		
+		if (errorMessage.includes('Navigation') || errorMessage.includes('net::')) {
+			return {
+				success: false,
+				message: "Could not access Facebook. The video might be private, deleted, or require login.",
+			};
+		}
+		
 		return {
 			success: false,
 			message: error instanceof Error ? error.message : ERROR_MESSAGES.FACEBOOK_FAILED,
