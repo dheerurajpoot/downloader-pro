@@ -2,10 +2,7 @@
 
 import ytdl from "@distube/ytdl-core";
 import { instagramGetUrl } from "instagram-url-direct";
-
-// No external Facebook library - using Puppeteer for browser automation
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const puppeteer = require("puppeteer");
+import puppeteer from "puppeteer";
 
 // Supported platform patterns
 const PLATFORM_PATTERNS = {
@@ -64,7 +61,7 @@ async function handleYouTube(url: string) {
 		const thumbnail = info.videoDetails.thumbnails.at(-1)?.url;
 
 		// Get all formats
-		let formats = info.formats;
+		const formats = info.formats;
 
 		// First try formats with both video and audio
 		let videoFormats = formats.filter((f) => f.hasVideo && f.hasAudio);
@@ -138,7 +135,6 @@ async function handleInstagram(url: string) {
 		// Support both /reel/ and /reels/ URL patterns
 		const isReel = cleanUrl.includes("/reel/") || cleanUrl.includes("/reels/");
 		const isPost = cleanUrl.includes("/p/");
-		const isProfile = !isReel && !isPost;
 
 		// Prefer video URLs for reels
 		let mediaUrl = urlList[0];

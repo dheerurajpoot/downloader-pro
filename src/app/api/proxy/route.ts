@@ -18,7 +18,6 @@ export async function GET(request: NextRequest) {
 		const type = searchParams.get("type");
 		const quality = searchParams.get("quality");
 		const mediaUrl = searchParams.get("media_url");
-		const videoId = searchParams.get("video_id");
 
 		if (!url || !type) {
 			return NextResponse.json(
