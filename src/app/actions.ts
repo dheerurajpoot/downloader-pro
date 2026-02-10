@@ -2,7 +2,8 @@
 
 import ytdl from "@distube/ytdl-core";
 import { instagramGetUrl } from "instagram-url-direct";
-import puppeteer from "puppeteer";
+import puppeteerCore from "puppeteer-core";
+import chromium from "@sparticuz/chromium";
 
 // Supported platform patterns
 const PLATFORM_PATTERNS = {
@@ -257,9 +258,28 @@ async function handleFacebook(url: string) {
 			cleanUrl.includes("fb.watch");
 
 		// Use Puppeteer to extract video URL from Facebook
+		// Check if running locally or on Vercel
+		const isLocal = process.env.NODE_ENV === 'development';
+		
+		// Use puppeteer locally (has bundled Chromium), puppeteer-core on Vercel
+		let puppeteer = puppeteerCore;
+		if (isLocal) {
+			// Dynamically import puppeteer only in development
+			try {
+				puppeteer = await import('puppeteer').then(m => m.default);
+			} catch {
+				// Fallback to puppeteer-core if puppeteer not available
+			}
+		}
+		
 		const browser = await puppeteer.launch({
+			args: isLocal 
+				? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+				: chromium.args,
+			executablePath: isLocal 
+				? undefined // Use bundled Chromium locally
+				: await chromium.executablePath(),
 			headless: true,
-			args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
 		});
 
 		try {
