@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft, Download, Shield, Zap } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { SITE_NAME } from "@/lib/constant";
 
 export const metadata: Metadata = {
-	title: "About Us - Social Media Downloader",
-	description: "Learn more about Social Media Downloader",
+	title: `About Us - ${SITE_NAME}`,
+	description: `Learn more about ${SITE_NAME}`,
 };
 
 export default function About() {
@@ -35,7 +36,7 @@ export default function About() {
 							Our Story
 						</h2>
 						<p className='text-green-700 mb-4'>
-							Social Media Downloader was founded in 2023 with a
+							{SITE_NAME} was founded in 2023 with a
 							simple mission: to make it easy for everyone to
 							download and save their favorite content from social
 							media platforms.

@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { Download, Github, Twitter, Facebook, Instagram } from "lucide-react"
+import { SITE_NAME } from "@/lib/constant"
 
 export default function Footer() {
   return (
@@ -11,7 +12,7 @@ export default function Footer() {
               <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center">
                 <Download className="w-5 h-5 text-green-600" />
               </div>
-              <span className="text-lg font-bold text-white">Social Media Downloader</span>
+              <span className="text-lg font-bold text-white">{SITE_NAME}</span>
             </Link>
             <p className="mt-4 text-green-100">
               Download videos and images from your favorite social media platforms quickly and easily.
@@ -103,7 +104,7 @@ export default function Footer() {
 
         <div className="pt-8 mt-8 text-center border-t border-green-600">
           <p className="text-green-100">
-            &copy; {new Date().getFullYear()} Social Media Downloader. All rights reserved.
+            &copy; {new Date().getFullYear()} {SITE_NAME}. All rights reserved.
           </p>
         </div>
       </div>

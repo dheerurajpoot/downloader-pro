@@ -1,10 +1,11 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
+import { SITE_NAME } from "@/lib/constant"
 
 export const metadata: Metadata = {
-  title: "Disclaimer - Social Media Downloader",
-  description: "Disclaimer for Social Media Downloader",
+  title: `Disclaimer - ${SITE_NAME}`,
+  description: `Disclaimer for ${SITE_NAME}`,
 }
 
 export default function Disclaimer() {
@@ -20,11 +21,11 @@ export default function Disclaimer() {
           <h1 className="mb-6 text-3xl font-bold text-green-800">Disclaimer</h1>
 
           <div className="prose prose-green max-w-none">
-            <p className="text-gray-700">Last updated: April 20, 2023</p>
+            <p className="text-gray-700">Last updated: March 28, 2026</p>
 
             <h2>1. Content Responsibility</h2>
             <p>
-              Social Media Downloader is a tool that allows users to download content from various social media
+              {SITE_NAME} is a tool that allows users to download content from various social media
               platforms. We do not host, create, upload, or distribute any of the content that users download through
               our service. We are merely providing a technical service to facilitate the downloading of publicly
               available content.

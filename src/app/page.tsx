@@ -17,7 +17,7 @@ export default function Home() {
         <section className="py-12 text-center relative">
           <div className="absolute inset-0 green-pattern -z-10 opacity-30"></div>
           <h1 className="mb-4 text-4xl font-extrabold tracking-tight text-green-800 sm:text-5xl md:text-6xl">
-            Social Media{" "}
+            All In One{" "}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-500 to-green-700">
               Downloader
             </span>

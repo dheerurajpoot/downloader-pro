@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
+import { SITE_EMAIL, SITE_NAME, SITE_PHONE } from "@/lib/constant";
 
 export const metadata: Metadata = {
-	title: "Contact Us - Social Media Downloader",
-	description: "Contact Social Media Downloader team",
+	title: `Contact Us - ${SITE_NAME}`,
+	description: `Contact ${SITE_NAME} team`,
 };
 
 export default function Contact() {
@@ -122,7 +123,7 @@ export default function Contact() {
 												Email
 											</h3>
 											<p className='text-green-700'>
-												support@socialmediadownloader.com
+												{SITE_EMAIL}
 											</p>
 										</div>
 									</div>
@@ -136,7 +137,7 @@ export default function Contact() {
 												Phone
 											</h3>
 											<p className='text-green-700'>
-												+1 (555) 123-4567
+												{SITE_PHONE}
 											</p>
 										</div>
 									</div>

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Download, Menu, X } from "lucide-react"
+import { SITE_NAME } from "@/lib/constant"
 
 export default function Header() {
   const [isScrolled, setIsScrolled] = useState(false)
@@ -29,7 +30,7 @@ export default function Header() {
           <div className="w-10 h-10 rounded-full green-gradient flex items-center justify-center">
             <Download className="w-5 h-5 text-white" />
           </div>
-          <span className="text-xl font-bold text-green-800">Social Media Downloader</span>
+          <span className="text-xl font-bold text-green-800">{SITE_NAME}</span>
         </Link>
 
         <div className="md:hidden">

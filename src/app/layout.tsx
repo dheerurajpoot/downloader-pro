@@ -5,6 +5,7 @@ import { Toaster } from "react-hot-toast";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
 import { ThemeProvider } from "@/components/theme-provider";
+import { SITE_AUTHOR, SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/constant";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -28,41 +29,30 @@ export default function RootLayout({
 }
 
 export const metadata = {
-	metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
+	metadataBase: new URL(SITE_URL),
 	title: {
-		template: '%s | Video Downloader Pro',
-		default: 'Video Downloader Pro - Download Videos from Multiple Platforms'
+		template: `%s | ${SITE_NAME}`,
+		default: `${SITE_NAME} - Download Videos from Multiple Platforms`
 	},
-	description: 'Free online video downloader supporting multiple platforms. Download videos from YouTube, Facebook, Instagram, and more in high quality.',
-	generator: 'Next.js',
-	applicationName: 'Video Downloader Pro',
+	description: SITE_DESCRIPTION,
+	applicationName: SITE_NAME,
 	keywords: ['video downloader', 'youtube downloader', 'online video download', 'free video downloader', 'social media video download'],
-	authors: [{ name: 'Video Downloader Pro Team' }],
-	canonical: 'https://your-domain.com',
+	authors: [{ name: SITE_AUTHOR }],
+	canonical: SITE_URL,
 	robotsContent: 'index, follow',
 	openGraph: {
 		type: 'website',
 		locale: 'en_US',
-		url: 'https://your-domain.com',
-		site_name: 'Video Downloader Pro',
-		title: 'Video Downloader Pro - Download Videos from Multiple Platforms',
-		description: 'Free online video downloader supporting multiple platforms. Download videos from YouTube, Facebook, Instagram, and more in high quality.',
-		images: [{
-			url: '/og-image.jpg',
-			width: 1200,
-			height: 630,
-			alt: 'Video Downloader Pro'
-		}]
+		url: SITE_URL,
+		site_name: SITE_NAME,
+		title: `${SITE_NAME} - Download Videos from Multiple Platforms`,
+		description: SITE_DESCRIPTION,
 	},
 	twitter: {
 		card: 'summary_large_image',
-		title: 'Video Downloader Pro - Download Videos from Multiple Platforms',
-		description: 'Free online video downloader supporting multiple platforms. Download videos from YouTube, Facebook, Instagram, and more in high quality.',
+		title: `${SITE_NAME} - Download Videos from Multiple Platforms`,
+		description: SITE_DESCRIPTION,
 		images: ['/og-image.jpg'],
-		creator: '@videodownloaderpro'
+		creator: SITE_AUTHOR
 	},
-	verification: {
-		google: 'your-google-verification-code',
-		yandex: 'your-yandex-verification-code'
-	}
 };
