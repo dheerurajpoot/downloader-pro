@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: `Privacy Policy for ${SITE_NAME}`,
 }
 
-function Section({ icon: Icon, title, children }: { icon: any, title: string, children: React.ReactNode }) {
+function Section({ icon: Icon, title, children }: { icon: React.ElementType, title: string, children: React.ReactNode }) {
   return (
     <div className="flex flex-col sm:flex-row gap-6 p-6 sm:p-8 bg-white rounded-2xl shadow-sm border border-gray-100/50 transition-all hover:shadow-md">
       <div className="flex-shrink-0">
